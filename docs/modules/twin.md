@@ -1,8 +1,22 @@
 # OPC Twin Edge Module
 
+## Table of Content
+
+* [About](#About)
+* [Server Discovery](#Server-Discovery)
+  * [Configuration](#Configuration)
+  * [Recurring Discovery](#Recurring-Discovery)
+  * [One Time Discovery](#One-Time-Discovery)
+* [OPC UA Client Services](#OPC-UA-Client-Services)
+* [OPC Publisher Module Integration](#OPC-Publisher-Module-Integration)
+* [Command Line Options](#Command-Line-Options)
+* [Next Steps](#Next-Steps)
+
+## About
+
 The OPC Twin module runs inside IoT Edge.  
 
-All OPC UA components use the OPC Foundation's OPC UA reference stack as nuget packages and therefore licensing of their nuget packages apply. Visit https://opcfoundation.org/license/redistributables/1.3/ for the licensing terms.
+All OPC UA components use the OPC Foundation's OPC UA reference stack as NuGet packages and therefore licensing of their NuGet packages apply. Visit [OPC REDISTRIBUTABLES Agreement of Use (Version 1.3)](https://opcfoundation.org/license/redistributables/1.3/) for the licensing terms.
 
 ## Server Discovery
 
@@ -22,7 +36,7 @@ If no active scanning is desired the configuration can also specify
 
 * a list of discovery URIs (which if provided disable the use of any address and port ranges in the configuration)
 
-### Recurring discovery
+### Recurring Discovery
 
 Recurring discovery can be enabled in the Supervisor identity's model using the OPC Registry API.   A specific “mode” must be specified in addition to an optional [configuration](#configuration):
 
@@ -33,7 +47,7 @@ Recurring discovery can be enabled in the Supervisor identity's model using the 
 
 If any discovery URL's are part of the supervisor's discovery configuration, no active scanning is performed, therefore any mode other than **Off** will cause the probing of the provided URLs.
 
-### One time discovery
+### One Time Discovery
 
 One-time only discovery can be initiated by an operator through the OPC registry’s REST API.  A discovery [configuration](#configuration) is part of the request payload.  One time discovery is serialized at the edge, i.e. will be performed one by one.
 
@@ -61,18 +75,18 @@ For more information about OPC Publisher, see [here](publisher.md).
 
 ## Command line options
 
-The command line options of aplicable for OPC Twin Module are as follows:
-        
+The command line options of applicable for OPC Twin Module are as follows:
+
         Usage: dotnet Microsoft.Azure.IIoT.Modules.OpcUa.Twin.dll
         
         The configuration of the twin can be made either by command line options or environment variables. 
-        The command line option will overule the environment variable
+        The command line option will overrule the environment variable
         
         Options: 
             EdgeHubConnectionString=VALUE 
                 mandatory option
                 default: <empty>
-                when deployed in the iotedge module context, the environment variuable is already set 
+                when deployed in the iotedge module context, the environment variable is already set 
                 as part of the container deployment
             
             AppCertStoreType=VALUE 
@@ -91,7 +105,7 @@ The command line options of aplicable for OPC Twin Module are as follows:
 
             TrustedCertPath=VALUE 
                 path to store the Twin's trusted peer certificate list. Path contains the
-                public keys of the OPC UA server applicatins allowed by the OPC Twin to establish a secure connection
+                public keys of the OPC UA server applications allowed by the OPC Twin to establish a secure connection
                 default: `<PkiRootPath>/trusted`
                 
                 Note: since in OPC UA the application's trust is symetrical, the OPC UA Servers must trust the 
@@ -123,5 +137,4 @@ The command line options of aplicable for OPC Twin Module are as follows:
 
 * [Learn how to deploy OPC Twin Module](../howto-deploy-modules.md)
 * [Learn about the OPC Twin Microservice](twin.md)
-* [Learn about OPC Registry Onboarding](onboarding.md)
-
+* [Learn about OPC Registry Onboarding](../services/onboarding.md)

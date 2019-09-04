@@ -2,7 +2,7 @@
 # Build images in acr
 #
 parameters:
-  projectBuild: 'true'
+  useNugets: 'False'
 jobs:
 - job: imagesprep
   displayName: Prepare Image Jobs
@@ -26,7 +26,7 @@ jobs:
     matrix: $[ dependencies.imagesprep.outputs['acrmatrix.acrMatrix'] ]
   variables:
     skipComponentGovernanceDetection: true
-    PROJECT_BUILD: ${{ parameters.projectBuild }}
+    PROJECT_BUILD: ${{ parameters.useNugets }}
   steps:
   - task: PowerShell@2
     displayName: Versioning

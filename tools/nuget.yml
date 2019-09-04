@@ -21,6 +21,11 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/getversion.ps1
+  - task: DotNetCoreCLI@2
+    displayName: Restore
+    inputs:
+      command: restore
+      projects: 'Industrial-IoT.sln'
   - task: MSBuild@1
     displayName: Build
     inputs:

@@ -16,3 +16,5 @@ stages:
   dependsOn: pack
   jobs:
   - template: tools/acrbuild.yml
+    parameters:
+      useNugets: ${{ startsWith(variables['Build.SourceBranch'], 'refs/heads/') }}

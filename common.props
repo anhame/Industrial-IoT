@@ -6,7 +6,7 @@
     <NoWarn>NU5125</NoWarn>
     <Authors>Microsoft</Authors>
     <Company>Microsoft</Company>
-    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <Copyright>© Microsoft Corporation.</Copyright>
     <PackageIconUrl>http://go.microsoft.com/fwlink/?LinkID=288890</PackageIconUrl>
     <PackageReleaseNotes>$(RepositoryUrl)/releases</PackageReleaseNotes>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
@@ -27,9 +27,11 @@
     <None Remove="mcr.json" />
   </ItemGroup>
   <ItemGroup Condition="$(NO_GIT) == ''">
-    <PackageReference Include="LibGit2Sharp" Version="0.27.0-preview-0017" PrivateAssets="All"/>
-    <PackageReference Include="GitVersionTask" Version="5.0.1" PrivateAssets="All"/>
+    <PackageReference Include="LibGit2Sharp" Version="0.26.0-preview-0070" PrivateAssets="All"/>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-19367-01" PrivateAssets="All"/>
+  </ItemGroup>
+  <ItemGroup Condition="$(NO_GIT) == '' and '$(BUILD_SOURCEVERSION)' == ''">
+    <PackageReference Include="GitVersionTask" Version="5.0.1" PrivateAssets="All"/>
   </ItemGroup>
   <PropertyGroup>
     <PrereleaseSuffix>$(NuGetPreReleaseTag)</PrereleaseSuffix>

@@ -1,24 +1,4 @@
 {
   "$schema": "NerdBank.GitVersioning/version.schema.json",
-  "version": "2.6-prerelease",
-  "assemblyVersion": {
-    "precision": "revision"
-  },
-  "publicReleaseRefSpec": [
-    "^refs/heads/master$",
-    "^refs/tags/\\d+\\.\\d+"
-  ],
-  "cloudBuild": {
-    "setVersionVariables": true,
-    "buildNumber": {
-      "enabled": false,
-      "includeCommitId": {
-        "when": "nonPublicReleaseOnly",
-        "where": "buildMetadata"
-      }
-    }
-  },
-  "release": {
-    "branchName": "release/v{version}"
-  }
+  "version": "2.6-prerelease"
 }

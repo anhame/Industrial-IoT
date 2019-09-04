@@ -17,10 +17,9 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - ps: |
-      dotnet tool install --tool-path . GitVersion.Tool
-      dotnet-gitversion /output buildserver
+  - pwsh:
     displayName: Versioning
+    filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
     displayName: Restore
     inputs:

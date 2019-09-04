@@ -7,10 +7,9 @@ jobs:
   pool:
     name: Hosted Windows 2019 with VS2019
   steps:
-  - script: |
-      dotnet tool install --tool-path . GitVersion.Tool
-      dotnet-gitversion /output buildserver
+  - pwsh:
     displayName: Versioning
+    filePath: tools/getversion.ps1
   - task: DownloadPipelineArtifacts@2
     inputs:
       artifact: 'release_$(GitVersion.FullSemVer)'

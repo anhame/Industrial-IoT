@@ -28,6 +28,9 @@ jobs:
     skipComponentGovernanceDetection: true
     PROJECT_BUILD: ${{ parameters.projectBuild }}
   steps:
+  - pwsh:
+    displayName: Versioning
+    filePath: tools/getversion.ps1
   - task: AzureCLI@1
     name: acrbuildr
     displayName: Build Release Images

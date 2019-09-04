@@ -34,6 +34,8 @@ jobs:
   - script: |
       dotnet tool install --tool-path . GitVersion.Tool
       .\dotnet-gitversion /output buildserver
+
+    displayName: Versioning
   - task: DotNetCoreCLI@2
     displayName: Release Build
     inputs:
@@ -80,6 +82,8 @@ jobs:
   - script: |
        dotnet tool install --tool-path . GitVersion.Tool
       .\dotnet-gitversion /output buildserver
+
+    displayName: Versioning
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:

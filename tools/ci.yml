@@ -90,11 +90,6 @@ jobs:
       targetType: filePath
       filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
-    displayName: Restore
-    inputs:
-      command: restore
-      projects: '$(folder)/**/tests/*.csproj'
-  - task: DotNetCoreCLI@2
     displayName: Test
     inputs:
       command: test

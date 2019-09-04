@@ -1,11 +1,13 @@
 {
   "$schema": "NerdBank.GitVersioning/version.schema.json",
-  "version": "2.6",
+  "version": "2.6-prerelease",
+  "assemblyVersion": {
+    "precision": "revision"
+  },
   "publicReleaseRefSpec": [
-    "^refs/heads/master$", // we release out of master
-    "^refs/tags/\\d+\\.\\d+" // we also release tags starting with N.N
+    "^refs/heads/master$",
+    "^refs/tags/\\d+\\.\\d+"
   ],
-  "gitCommitIdShortFixedLength": 7,
   "cloudBuild": {
     "setVersionVariables": true,
     "buildNumber": {

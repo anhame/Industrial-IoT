@@ -1,9 +1,6 @@
 {
   "$schema": "NerdBank.GitVersioning/version.schema.json",
-  "version": "2.6",
-  "assemblyVersion": {
-    "precision": "revision"
-  },
+  "version": "2.6.0",
   "publicReleaseRefSpec": [
     "^refs/heads/master$",
     "^refs/tags/\\d+\\.\\d+"

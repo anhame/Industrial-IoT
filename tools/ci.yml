@@ -41,13 +41,13 @@ jobs:
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Release /m:1'
+      arguments: '--configuration Release'
   - task: DotNetCoreCLI@2
     displayName: Debug Build
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Debug /m:1'
+      arguments: '--configuration Debug'
 - job: testprep
   displayName: Prepare Test Jobs
   pool:

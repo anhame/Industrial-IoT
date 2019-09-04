@@ -250,7 +250,7 @@ if ($projFile -ne $null) {
         }
         $argumentList += "-o"
         $argumentList += (join-path $output $runtimeId)
-        $argumentList += "/m:1"
+        #$argumentList += "/m:1"
         $argumentList += $projFile.FullName
 
         Write-Host "Publish $($projFile.FullName) with $($runtimeId) runtime..."

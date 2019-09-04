@@ -32,7 +32,7 @@ jobs:
     inputs:
       command: build
       projects: 'Industrial-IoT.sln'
-      arguments: '--configuration Release /m:1'
+      arguments: '--configuration Release'
   - task: securedevelopmentteam.vss-secure-development-tools.build-task-credscan.CredScan@2
     displayName: 'Credential Scanner'
     inputs:

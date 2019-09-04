@@ -31,7 +31,7 @@ jobs:
     inputs:
       command: build
       projects: 'Industrial-IoT.sln'
-      arguments: '--configuration Release /m:1'
+      arguments: '--configuration Release'
   - task: AntiMalware@3
     displayName: 'Run Virus scan'
     inputs:

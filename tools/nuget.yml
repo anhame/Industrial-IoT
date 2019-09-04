@@ -91,6 +91,7 @@ jobs:
       command: pack
       packagesToPack: 'Industrial-IoT.sln'
       configuration: Release
+      configurationToPack: Release
       nobuild: true
   - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
     displayName: 'Nuget Signing'

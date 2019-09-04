@@ -46,13 +46,13 @@ jobs:
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Release'
+      arguments: '--configuration Release /m:1'
   - task: DotNetCoreCLI@2
     displayName: Debug Build
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Debug'
+      arguments: '--configuration Debug /m:1'
 - job: testprep
   displayName: Prepare Test Jobs
   pool:
@@ -89,6 +89,12 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/getversion.ps1
+  - task: DotNetCoreCLI@2
+    displayName: Build
+    inputs:
+      command: build
+      projects: '$(folder)/**/tests/*.csproj'
+      arguments: '--configuration Release /m:1'
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:

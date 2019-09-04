@@ -22,16 +22,12 @@ jobs:
       targetType: filePath
       filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
-    displayName: Restore
-    inputs:
-      command: restore
-      projects: 'Industrial-IoT.sln'
-  - task: DotNetCoreCLI@2
     displayName: Build
     inputs:
       command: build
       projects: 'Industrial-IoT.sln'
-      arguments: '--configuration Release /m:1'
+      configuration: Release
+      arguments: '/m:1'
   - task: AntiMalware@3
     displayName: 'Run Virus scan'
     inputs:

@@ -37,22 +37,19 @@ jobs:
       targetType: filePath
       filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
-    displayName: Restore
-    inputs:
-      command: restore
-      projects: '$(file)'
-  - task: DotNetCoreCLI@2
     displayName: Release Build
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Release /m:1'
+      configuration: Release
+      arguments: '/m:1'
   - task: DotNetCoreCLI@2
     displayName: Debug Build
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Debug /m:1'
+      configuration: Debug
+      arguments: '/m:1'
 - job: testprep
   displayName: Prepare Test Jobs
   pool:
@@ -73,6 +70,7 @@ jobs:
   strategy:
     matrix: $[dependencies.testprep.outputs['testmatrix.jobMatrix'] ]
   variables:
+    NO_GIT: 'true'
     skipComponentGovernanceDetection: true
   pool:
     name: $(poolName)
@@ -89,12 +87,6 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/getversion.ps1
-  - task: DotNetCoreCLI@2
-    displayName: Build
-    inputs:
-      command: build
-      projects: '$(folder)/**/tests/*.csproj'
-      arguments: '--configuration Release /m:1'
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:

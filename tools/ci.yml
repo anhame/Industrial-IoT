@@ -41,15 +41,13 @@ jobs:
     inputs:
       command: build
       projects: '$(file)'
-      configuration: Release
-      arguments: '/m:1'
+      arguments: '--configuration Release /m:1'
   - task: DotNetCoreCLI@2
     displayName: Debug Build
     inputs:
       command: build
       projects: '$(file)'
-      configuration: Debug
-      arguments: '/m:1'
+      arguments: '--configuration Debug /m:1'
 - job: testprep
   displayName: Prepare Test Jobs
   pool:
@@ -82,11 +80,6 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - task: PowerShell@2
-    displayName: Versioning
-    inputs:
-      targetType: filePath
-      filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:

@@ -21,13 +21,11 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/getversion.ps1
-  - task: DotNetCoreCLI@2
+  - task: MSBuild@1
     displayName: Build
     inputs:
-      command: build
-      projects: 'Industrial-IoT.sln'
+      solution: 'Industrial-IoT.sln'
       configuration: Release
-      arguments: '/m:1'
   - task: AntiMalware@3
     displayName: 'Run Virus scan'
     inputs:

@@ -35,8 +35,8 @@
     <PrereleaseSuffix>$(PrereleaseVersionNoLeadingHyphen)-$(GitCommitIdShort)</PrereleaseSuffix>
     <PrereleaseVersion Condition="'$(BUILD_SOURCEVERSION)' != ''">[$(NuGetPackageVersion)]</PrereleaseVersion>
     <PrereleaseVersion Condition="'$(BUILD_SOURCEVERSION)' == ''">$(VersionPrefix)-$(PrereleaseVersion)*</PrereleaseVersion>
-    <PrereleaseVersion Condition="'$(PublicRelease)' != ''">$(VersionPrefix)-*</PrereleaseVersion>
-    <ReleaseVersion Condition="'$(PublicRelease)' != ''">$(VersionPrefix)</ReleaseVersion>
-    <ReleaseVersion Condition="'$(PublicRelease)' == ''">$(NuGetPackageVersion)</ReleaseVersion>
+    <PrereleaseVersion Condition="'$(PublicRelease)' == 'True'">$(VersionPrefix)-*</PrereleaseVersion>
+    <ReleaseVersion Condition="'$(PublicRelease)' == 'True'">$(VersionPrefix)</ReleaseVersion>
+    <ReleaseVersion Condition="'$(PublicRelease)' == 'False'">$(NuGetPackageVersion)</ReleaseVersion>
   </PropertyGroup>
 </Project>

@@ -2,8 +2,7 @@
 # Pack nugets for consumption
 #
 parameters:
-  sign: ''
-
+  sign: 'False'
 jobs:
 - job: nuget
   displayName: Pack Nugets
@@ -38,7 +37,7 @@ jobs:
       TreatSignatureUpdateFailureAs: 'Warning'
       SignatureFreshness: 'UpToDate'
       TreatStaleSignatureAs: 'Error'
-  - ${{ if ne(parameters.sign, '') }}:
+  - ${{ if eq(parameters.sign, 'True') }}:
     - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
       displayName: 'Code Signing'
       inputs:
@@ -94,7 +93,7 @@ jobs:
       configuration: Release
       configurationToPack: Release
       nobuild: true
-  - ${{ if ne(parameters.sign, '') }}:
+  - ${{ if eq(parameters.sign, 'True') }}:
     - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
       displayName: 'Nuget Signing'
       inputs:

@@ -1,4 +1,4 @@
 {
   "$schema": "NerdBank.GitVersioning/version.schema.json",
-  "version": "2.6-prerelease"
+  "version": "2.6.0"
 }

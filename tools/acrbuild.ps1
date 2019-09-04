@@ -81,12 +81,17 @@ $buildRoot = GetTopMostFolder -startDir $path `
 $metadata = Get-Content -Raw -Path (join-path $path "mcr.json") `
     | ConvertFrom-Json
 
-# get and set build information from gitversion, git or version content
-$sourceTag = $env:GITVERSION_MajorMinorPatch
-if (![string]::IsNullOrEmpty($sourceTag)) {
-    Write-Host "Using version $($sourceTag) from GitVersion"
+# get and set build information from getversion.ps1, git or version content
+# TODO : Call getversion.ps1 directly here.
+$sourceTag = $env:NBGV_Version
+if ([string]::IsNullOrEmpty($sourceTag)) {
+    $sourceTag = $env:GITVERSION_MajorMinorPatch
 }
-else {
+if (![string]::IsNullOrEmpty($sourceTag)) {
+    Write-Host "Using version $($sourceTag) from getversion.ps1"
+}
+
+if ([string]::IsNullOrEmpty($sourceTag)) {
     # Otherwise look at git tag
     if (![string]::IsNullOrEmpty($env:BUILD_SOURCEVERSION)) {
         # Try get current tag

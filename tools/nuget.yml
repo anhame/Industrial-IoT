@@ -131,7 +131,7 @@ jobs:
     displayName: 'Publish Artifact'
     inputs:
       path: $(Build.ArtifactStagingDirectory)
-      artifact: 'release_$(GitVersion.FullSemVer)'
+      artifact: 'release_$(NBGV_SemVer1)'
   - task: NuGetCommand@2
     displayName: Push
     inputs:
@@ -146,5 +146,5 @@ jobs:
       SymbolServerType: TeamServices
       SymbolsMaximumWaitTime: 10
       SymbolsProduct: azureiiot
-      SymbolsVersion: '$(GitVersion.FullSemVer)'
+      SymbolsVersion: '$(NBGV_SemVer1)'
     continueOnError: true

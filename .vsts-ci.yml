@@ -1,2 +1,2 @@
-- jobs:
+jobs:
   - template: tools/ci.yml

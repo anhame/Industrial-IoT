@@ -1,14 +1,14 @@
 {
-  "$schema": "https://raw.githubusercontent.com/AArnott/Nerdbank.GitVersioning/master/src/NerdBank.GitVersioning/version.schema.json",
+  "$schema": "NerdBank.GitVersioning/version.schema.json",
   "version": "2.6-prerelease",
+  "assemblyVersion": {
+    "precision": "build"
+  },
   "publicReleaseRefSpec": [
     "^refs/heads/master$", // we release out of master
     "^refs/tags/\\d+\\.\\d+" // we also release tags starting with N.N
   ],
   "gitCommitIdShortFixedLength": 7,
-  "assemblyVersion": {
-    "precision": "build"
-  },
   "cloudBuild": {
     "setVersionVariables": true,
     "buildNumber": {

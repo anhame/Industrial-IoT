@@ -10,7 +10,7 @@ stages:
   jobs:
   - template: tools/nuget.yml
     parameters:
-      sign: '${{ startsWith(variables['Build.SourceBranch'], 'refs/heads/') }}'
+      sign: ${{ startsWith(variables['Build.SourceBranch'], 'refs/heads/') }}
 - stage: images
   displayName: 'Create and Push Images'
   dependsOn: pack

@@ -7,7 +7,7 @@
   ],
   "gitCommitIdShortFixedLength": 7,
   "assemblyVersion": {
-    "precision": "revision"
+    "precision": "build"
   },
   "cloudBuild": {
     "setVersionVariables": true,

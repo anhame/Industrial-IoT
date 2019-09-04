@@ -27,11 +27,12 @@ jobs:
     inputs:
       command: restore
       projects: 'Industrial-IoT.sln'
-  - task: MSBuild@1
+  - task: DotNetCoreCLI@2
     displayName: Build
     inputs:
-      solution: 'Industrial-IoT.sln'
-      configuration: Release
+      command: build
+      projects: 'Industrial-IoT.sln'
+      arguments: '--configuration Release /m:1'
   - task: securedevelopmentteam.vss-secure-development-tools.build-task-credscan.CredScan@2
     displayName: 'Credential Scanner'
     inputs:

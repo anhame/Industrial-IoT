@@ -17,8 +17,11 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - task: gittools.gitversion.gitversion-task.GitVersion@5
+  - task: PowerShell@2
     displayName: Versioning
+    inputs:
+      targetType: filePath
+      filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
     displayName: Restore
     inputs:

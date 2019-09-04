@@ -14,7 +14,7 @@ jobs:
     displayName: Prepare Solutions
     inputs:
       targetType: filePath
-      filePath: ./tools/cimatrix.ps1
+      filePath: ./tools/jobmatrix.ps1
       arguments: -FileName *.sln
 - job: buildall
   displayName: Building
@@ -31,20 +31,23 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - task: gittools.gitversion.gitversion-task.GitVersion@5
+  - task: PowerShell@2
     displayName: Versioning
+    inputs:
+      targetType: filePath
+      filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
     displayName: Release Build
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Release'
+      arguments: '--configuration Release /m:1'
   - task: DotNetCoreCLI@2
     displayName: Debug Build
     inputs:
       command: build
       projects: '$(file)'
-      arguments: '--configuration Debug'
+      arguments: '--configuration Debug /m:1'
 - job: testprep
   displayName: Prepare Test Jobs
   pool:
@@ -57,14 +60,16 @@ jobs:
     displayName: Prepare Tests
     inputs:
       targetType: filePath
-      filePath: ./tools/cimatrix.ps1
-      arguments:
+      filePath: ./tools/jobmatrix.ps1
+      # arguments: -FileName Directory.Build.props
+      arguments: -FileName azure-pipelines.yml
 - job: testall
   displayName: Run Tests for
   dependsOn: testprep
   strategy:
     matrix: $[dependencies.testprep.outputs['testmatrix.jobMatrix'] ]
   variables:
+    NO_GIT: 'true'
     skipComponentGovernanceDetection: true
   pool:
     name: $(poolName)
@@ -76,8 +81,6 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - task: gittools.gitversion.gitversion-task.GitVersion@5
-    displayName: Versioning
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:

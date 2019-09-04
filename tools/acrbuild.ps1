@@ -22,7 +22,7 @@
     The folder to build the docker files from
 
  .PARAMETER registry
-    The name of the registry in ACR
+    The name of the registry
 
  .PARAMETER subscription
     The subscription to use - otherwise uses default
@@ -146,7 +146,7 @@ if ([string]::IsNullOrEmpty($branchName) -or ($branchName -eq "HEAD")) {
 }
 
 # Check and set registry
-$namespacePrefix = "internal/"
+$namespacePrefix = ""
 if ([string]::IsNullOrEmpty($registry)) {
     $registry = $env.BUILD_REGISTRY
     if ([string]::IsNullOrEmpty($registry)) {
@@ -245,6 +245,7 @@ if ($projFile -ne $null) {
         }
         $argumentList += "-o"
         $argumentList += (join-path $output $runtimeId)
+        $argumentList += "/m:1"
         $argumentList += $projFile.FullName
 
         Write-Host "Publish $($projFile.FullName) with $($runtimeId) runtime..."

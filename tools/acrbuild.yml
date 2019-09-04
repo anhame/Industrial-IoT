@@ -31,8 +31,8 @@ jobs:
     PROJECT_BUILD: ${{ parameters.projectBuild }}
   steps:
   - script: |
-    dotnet tool install --tool-path . GitVersion.Tool
-    .\dotnet-gitversion /output buildserver
+      dotnet tool install --tool-path . GitVersion.Tool
+      .\dotnet-gitversion /output buildserver
     displayName: Versioning
   - task: AzureCLI@1
     name: acrbuildr

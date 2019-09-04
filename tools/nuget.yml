@@ -120,10 +120,11 @@ jobs:
       VerboseLogin: true
   - task: ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
-  - task: PublishBuildArtifacts@1
+  - task: PublishPipelineArtifact@1
     displayName: 'Publish Artifact'
     inputs:
-      ArtifactName: 'release_$(GitVersion.FullSemVer)'
+      path: $(Build.ArtifactStagingDirectory)
+      artifact: 'release_$(GitVersion.FullSemVer)'
   - task: NuGetCommand@2
     displayName: Push
     inputs:
@@ -131,3 +132,12 @@ jobs:
       packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.snupkg'
       nuGetFeedType: external
       publishFeedCredentials: azureiiot-dev
+  - task: PublishSymbols@2
+    displayName: 'Publish symbols path'
+    inputs:
+      IndexSources: false
+      SymbolServerType: TeamServices
+      SymbolsMaximumWaitTime: 10
+      SymbolsProduct: azureiiot
+      SymbolsVersion: '$(GitVersion.FullSemVer)'
+    continueOnError: true

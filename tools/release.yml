@@ -11,10 +11,8 @@ jobs:
       dotnet tool install --tool-path . GitVersion.Tool
       dotnet-gitversion /output buildserver
     displayName: Versioning
-  - task: DownloadBuildArtifacts@0
+  - task: DownloadPipelineArtifacts@2
     inputs:
-      buildType: 'current'
-      downloadType: 'single'
       artifact: 'release_$(GitVersion.FullSemVer)'
       path: $(Build.ArtifactStagingDirectory)
   - task: NuGetCommand@2
@@ -25,13 +23,4 @@ jobs:
       nuGetFeedType: external
       publishFeedCredentials: 'azureiiot-nuget'
       verbosityPush: Normal
-    continueOnError: true
-  - task: PublishSymbols@2
-    displayName: 'Publish symbols path'
-    inputs:
-      IndexSources: false
-      SymbolServerType: TeamServices
-      SymbolsMaximumWaitTime: 10
-      SymbolsProduct: azureiiot
-      SymbolsVersion: '$(GitVersion.MajorMinorPatch)'
     continueOnError: true

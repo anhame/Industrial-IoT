@@ -61,7 +61,8 @@ jobs:
     inputs:
       targetType: filePath
       filePath: ./tools/jobmatrix.ps1
-      arguments:
+      # arguments: -FileName Directory.Build.props
+      arguments: -FileName azure-pipelines.yml
 - job: testall
   displayName: Run Tests for
   dependsOn: testprep

@@ -16,12 +16,20 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - pwsh:
+  - task: PowerShell@2
     displayName: Versioning
-    filePath: tools/getversion.ps1
+    inputs:
+      targetType: filePath
+      filePath: tools/getversion.ps1
+  - task: DotNetCoreCLI@2
+    displayName: Restore
+    inputs:
+      command: restore
+      projects: 'Industrial-IoT.sln'
   - task: DotNetCoreCLI@2
     displayName: Build
     inputs:
+      command: build
       projects: 'Industrial-IoT.sln'
       arguments: '--configuration Release'
   - task: AntiMalware@3

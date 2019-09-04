@@ -35,6 +35,11 @@ jobs:
     displayName: Versioning
     filePath: tools/getversion.ps1
   - task: DotNetCoreCLI@2
+    displayName: Restore
+    inputs:
+      command: restore
+      projects: '$(file)'
+  - task: DotNetCoreCLI@2
     displayName: Release Build
     inputs:
       command: build
@@ -80,6 +85,11 @@ jobs:
   - pwsh:
     displayName: Versioning
     filePath: tools/getversion.ps1
+  - task: DotNetCoreCLI@2
+    displayName: Restore
+    inputs:
+      command: restore
+      projects: '$(folder)/**/tests/*.csproj'
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:

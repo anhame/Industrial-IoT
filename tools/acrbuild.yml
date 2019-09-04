@@ -30,7 +30,9 @@ jobs:
     skipComponentGovernanceDetection: true
     PROJECT_BUILD: ${{ parameters.projectBuild }}
   steps:
-  - task: gittools.gitversion.gitversion-task.GitVersion@5
+  - script: |
+    dotnet tool install --tool-path . GitVersion.Tool
+    .\dotnet-gitversion /output buildserver
     displayName: Versioning
   - task: AzureCLI@1
     name: acrbuildr

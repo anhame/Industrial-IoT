@@ -17,7 +17,9 @@ jobs:
       version: 2.2.x
       includePreviewVersions: false
       installationPath: $(Agent.ToolsDirectory)/dotnet
-  - task: gittools.gitversion.gitversion-task.GitVersion@5
+  - script: |
+    dotnet tool install --tool-path . GitVersion.Tool
+    .\dotnet-gitversion /output buildserver
     displayName: Versioning
   - task: DotNetCoreCLI@2
     displayName: Restore

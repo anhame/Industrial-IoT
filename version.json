@@ -6,7 +6,7 @@
     "^refs/tags/\\d+\\.\\d+" // we also release tags starting with N.N
   ],
   "gitCommitIdShortFixedLength": 7,
-  "assemblyVersion": "build"
+  "assemblyVersion": "build",
   "cloudBuild": {
     "setVersionVariables": true,
     "buildNumber": {

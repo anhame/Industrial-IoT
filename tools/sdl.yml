@@ -22,21 +22,38 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/getversion.ps1
-  - task: DotNetCoreCLI@2
-    displayName: Restore
-    inputs:
-      command: restore
-      projects: 'Industrial-IoT.sln'
-  - task: DotNetCoreCLI@2
+#  - task: DotNetCoreCLI@2
+#    displayName: Restore
+#    inputs:
+#      command: restore
+#      projects: 'Industrial-IoT.sln'
+#  - task: MSBuild@1
+#    displayName: Build
+#    inputs:
+#      solution: 'Industrial-IoT.sln'
+#      configuration: Release
+#  - task: DotNetCoreCLI@2
+#    displayName: Build
+#    inputs:
+#      command: build
+#      projects: 'Industrial-IoT.sln'
+#      arguments: '--configuration Release'
+  - task: VSBuild@1
     displayName: Build
     inputs:
-      command: build
-      projects: 'Industrial-IoT.sln'
-      arguments: '--configuration Release'
+      # solution: '**\*.sln' 
+      solution: 'Industrial-IoT.sln'
+      configuration: Release
+      clean: true
+      # maximumCpuCount: 1
+      restoreNugetPackages: true
   - task: securedevelopmentteam.vss-secure-development-tools.build-task-credscan.CredScan@2
     displayName: 'Credential Scanner'
     inputs:
       debugMode: false
+    continueOnError: true
+  - task: RoslynAnalyzers@2
+    displayName: 'Run Roslyn Analyzers'
     continueOnError: true
   - task: ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
@@ -72,9 +89,6 @@ jobs:
     displayName: PoliCheck
     inputs:
       targetType: F
-    continueOnError: true
-  - task: RoslynAnalyzers@2
-    displayName: 'Run Roslyn Analyzers'
     continueOnError: true
   - task: SdtReport@1
     displayName: 'Create Security Analysis Report'

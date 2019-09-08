@@ -82,16 +82,21 @@ $metadata = Get-Content -Raw -Path (join-path $path "mcr.json") `
     | ConvertFrom-Json
 
 # get and set build information from getversion.ps1, git or version content
-# TODO : Call getversion.ps1 directly here.
 $sourceTag = $env:NBGV_Version
 if ([string]::IsNullOrEmpty($sourceTag)) {
-    $sourceTag = $env:GITVERSION_MajorMinorPatch
+    try {
+        # Call getversion.ps1 directly here.
+        $versions = & ./getversion.ps1
+        $sourceTag = $versions.NBGV_Version
+    }
+    catch {
+        $sourceTag = $null
+    }
 }
 if (![string]::IsNullOrEmpty($sourceTag)) {
     Write-Host "Using version $($sourceTag) from getversion.ps1"
 }
-
-if ([string]::IsNullOrEmpty($sourceTag)) {
+else {
     # Otherwise look at git tag
     if (![string]::IsNullOrEmpty($env:BUILD_SOURCEVERSION)) {
         # Try get current tag
@@ -104,23 +109,9 @@ if ([string]::IsNullOrEmpty($sourceTag)) {
             $sourceTag = $null
         }
     }
-}
-if ([string]::IsNullOrEmpty($sourceTag)) {
-    # Finally - try old version.props
-    try {
-        $buildRoot = GetTopMostFolder -startDir $path `
-            -fileName "version.props"
-        # set version number from first encountered version.props
-        [xml] $props=Get-Content -Path (Join-Path $buildRoot "version.props")
-        $sourceTag="$($props.Project.PropertyGroup.VersionPrefix)".Trim()
+    if ([string]::IsNullOrEmpty($sourceTag)) {
+        $sourceTag = "latest"
     }
-    catch {
-        Write-Warning $_.Exception
-        $sourceTag = $null
-    }
-}
-if ([string]::IsNullOrEmpty($sourceTag)) {
-    $sourceTag = "latest"
 }
 
 # Try get branch name

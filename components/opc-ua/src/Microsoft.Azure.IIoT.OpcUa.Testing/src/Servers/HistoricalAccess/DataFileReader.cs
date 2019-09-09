@@ -218,7 +218,7 @@ namespace HistoricalAccess {
             }
 
             var currentTime = startTime;
-            var generator = new Opc.Ua.Test.DataGenerator(null);
+            var generator = new Opc.Ua.Test.TestDataGenerator();
 
             while (currentTime < DateTime.UtcNow) {
                 var dataValue = new DataValue {

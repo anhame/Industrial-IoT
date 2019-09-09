@@ -1235,7 +1235,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Testing.Tests {
         private readonly T _endpoint;
         private readonly Func<T, string, Task<JToken>> _readExpected;
         private readonly Func<INodeServices<T>> _services;
-        private readonly Opc.Ua.Test.DataGenerator _generator =
-            new Opc.Ua.Test.DataGenerator(null);
+        private readonly Opc.Ua.Test.TestDataGenerator _generator =
+            new Opc.Ua.Test.TestDataGenerator();
     }
 }

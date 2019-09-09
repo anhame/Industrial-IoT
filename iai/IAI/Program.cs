@@ -1,13 +1,17 @@
-﻿using System;
+﻿namespace IAI {
 
-namespace IAI {
-
+    using System;
     using System.Collections;
     using System.Security.Cryptography;
     using System.Collections.Generic;
     using System.Numerics;
     using System.ComponentModel.DataAnnotations;
     using System.Linq;
+    using System.Net.Http;
+    using System.Net.Http.Headers;
+    using System.Threading.Tasks;
+
+    using Newtonsoft.Json;
 
     using Microsoft.Azure.Management.Fluent;
     using Microsoft.Azure.Management.ResourceManager.Fluent;
@@ -18,7 +22,8 @@ namespace IAI {
     using Microsoft.Rest;
     using Microsoft.Graph;
     using Microsoft.Graph.Auth;
-    using Newtonsoft.Json;
+
+    using Microsoft.Azure.Management.KeyVault.Fluent;
 
     class Program {
 
@@ -41,21 +46,18 @@ namespace IAI {
             // ToDo: Figure out how to sign-in without tenantId
             //var tenantId = "72f988bf-86f1-41af-91ab-2d7cd011db47";  // microsoft.onmicrosoft.com
             var tenantId = "6e660ce4-d51a-4585-80c6-58035e212354";  // opcwalls.onmicrosoft.com
-                                                                    //var tenantId = "organizations";  // Generic one for multi-tenant applications
-                                                                    // ClientId of AzureIndustrialIoTIAI
+            //var tenantId = "organizations";  // Generic one for multi-tenant applications
+
+            // ClientId of AzureIndustrialIoTIAI
             const string iaiClientID = "fb2ca262-60d8-4167-ac33-1998d6d5c50b";
 
-            string[] scopes = new string[] {
-                //"https://management.core.windows.net//user_impersonation",
-
-                //"https://management.azure.com/user_impersonation"
-                
+            var microsoftGraphScopes = new string[] {
                 "https://graph.microsoft.com/Directory.AccessAsUser.All"
-                //"https://graph.microsoft.com/User.Read"
-                //"https://graph.microsoft.com/PrivilegedAccess.ReadWrite.AzureAD",
-                //"https://graph.microsoft.com/PrivilegedAccess.ReadWrite.AzureResources",
+            };
 
-                //"https://graph.windows.net/Application.ReadWrite.All",
+            var azureManagementScopes = new string[] {
+                //"https://management.core.windows.net//user_impersonation",
+                "https://management.azure.com/user_impersonation"
             };
 
             var publicClientApplication = PublicClientApplicationBuilder
@@ -65,34 +67,51 @@ namespace IAI {
                 .WithDefaultRedirectUri()
                 .Build();
 
-            //// ToDo: Add timeout.
-            //var authenticatoinResult = publicClientApplication
-            //        .AcquireTokenInteractive(scopes)
-            //        //.WithPrompt(Prompt.SelectAccount)
-            //        .ExecuteAsync()
-            //        .Result;
+            // ToDo: Add timeout.
+            var microsoftGraphAuthenticatoinResult = publicClientApplication
+                    .AcquireTokenInteractive(microsoftGraphScopes)
+                    //.WithPrompt(Prompt.SelectAccount)
+                    .WithExtraScopesToConsent(azureManagementScopes)
+                    .ExecuteAsync()
+                    .Result;
 
-            ////var accounts = app.GetAccountsAsync().Result;
-            ////var account = SelectAccount(accounts);
 
-            //var provider = new StringTokenProvider(authenticatoinResult.AccessToken, "Bearer");
 
-            //var tokenCredentials = new TokenCredentials(
-            //    provider,
-            //    authenticatoinResult.TenantId,
-            //    authenticatoinResult.Account.Username
-            //);
 
-            //var azureCredentials = new AzureCredentials(
-            //    tokenCredentials,
-            //    tokenCredentials,
-            //    authenticatoinResult.TenantId,
-            //    azureEnvironment
-            //);
+            //var accounts = publicClientApplication.GetAccountsAsync().Result;
+            //var account = SelectAccount(accounts);
 
-            //var authenticated = Azure
-            //    .Configure()
-            //    .Authenticate(azureCredentials);
+            //var managementToken = publicClientApplication.AcquireTokenSilent(azureManagementScopes, account);
+            var azureManagementAuthenticatoinResult = publicClientApplication
+                .AcquireTokenSilent(azureManagementScopes, microsoftGraphAuthenticatoinResult.Account)
+                .ExecuteAsync()
+                .Result;
+
+            var provider = new StringTokenProvider(microsoftGraphAuthenticatoinResult.AccessToken, "Bearer");
+
+            var microsoftGraphTokenCredentials = new TokenCredentials(
+                new StringTokenProvider(microsoftGraphAuthenticatoinResult.AccessToken, "Bearer"),
+                microsoftGraphAuthenticatoinResult.TenantId,
+                microsoftGraphAuthenticatoinResult.Account.Username
+            );
+
+            var azureManagementTokenCredentials = new TokenCredentials(
+                new StringTokenProvider(azureManagementAuthenticatoinResult.AccessToken, "Bearer"),
+                azureManagementAuthenticatoinResult.TenantId,
+                azureManagementAuthenticatoinResult.Account.Username
+            );
+
+            var azureCredentials = new AzureCredentials(
+                //microsoftGraphTokenCredentials,
+                azureManagementTokenCredentials,
+                microsoftGraphTokenCredentials,
+                microsoftGraphAuthenticatoinResult.TenantId,
+                azureEnvironment
+            );
+
+            var authenticated = Azure
+                .Configure()
+                .Authenticate(azureCredentials);
 
             //////////////////////////////////////////////////////
             ////Console.WriteLine("Tenants:");
@@ -104,8 +123,8 @@ namespace IAI {
             ////Console.WriteLine();
             //////////////////////////////////////////////////////
 
-            //var subscription = SelectSubscription(authenticated);
-            //var azure = authenticated.WithSubscription(subscription.SubscriptionId);
+            var subscription = SelectSubscription(authenticated);
+            var azure = authenticated.WithSubscription(subscription.SubscriptionId);
 
 
             //////////////////////////////////////////////////////
@@ -118,19 +137,32 @@ namespace IAI {
             //////////////////////////////////////////////////////
 
 
-            //var resourceGroup = SelectOrCreateResourceGroup(azure);
+            var resourceGroup = SelectOrCreateResourceGroup(azure);
+
+
+
 
             var applicationName = GetApplicationName();
 
             var servicesApplicationName = applicationName + "-services";
             var clientsApplicationName = applicationName + "-clients";
 
-            var authProvider = new InteractiveAuthenticationProvider(
-                publicClientApplication,
-                scopes
+            //var authProvider = new InteractiveAuthenticationProvider(
+            //    publicClientApplication,
+            //    azureManagementScopes
+            //);
+
+            var delegateAuthenticationProvider = new DelegateAuthenticationProvider(
+                (requestMessage) =>
+                {
+                    var access_token = microsoftGraphAuthenticatoinResult.AccessToken;
+                    requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access_token);
+                    return Task.FromResult(0);
+                }
             );
 
-            GraphServiceClient graphServiceClient = new GraphServiceClient(authProvider);
+            //var graphServiceClient = new GraphServiceClient(authProvider);
+            var graphServiceClient = new GraphServiceClient(delegateAuthenticationProvider);
 
             var me = graphServiceClient
                 .Me
@@ -185,10 +217,12 @@ namespace IAI {
 
             serviceApplicationRequiredResourceAccess.Add(
                 new RequiredResourceAccess {
-                    ResourceAppId = "cfa8b339-82a2-471a-a3c9-0fc0be7a4093",  // "Azure Key Vault"
+                    //ResourceAppId = "cfa8b339-82a2-471a-a3c9-0fc0be7a4093",  // "Azure Key Vault"
+                    ResourceAppId = AzureApps.AzureKeyVault.AppId,
                     ResourceAccess = new List<ResourceAccess> {
                         new ResourceAccess {
-                            Id = new Guid("f53da476-18e3-4152-8e01-aec403e6edc0"),  // "user_impersonation"
+                            //Id = new Guid("f53da476-18e3-4152-8e01-aec403e6edc0"),  // "user_impersonation"
+                            Id = AzureApps.AzureKeyVault.ResourceAccess["user_impersonation"],
                             Type = "Scope"
                         }
                     }
@@ -206,27 +240,71 @@ namespace IAI {
 
             serviceApplicationRequiredResourceAccess.Add(
                 new RequiredResourceAccess {
-                    ResourceAppId = "00000003-0000-0000-c000-000000000000",  // "Microsoft Graph"
+                    //ResourceAppId = "00000003-0000-0000-c000-000000000000",  // "Microsoft Graph"
+                    ResourceAppId = AzureApps.MicrosoftGraph.AppId,
                     ResourceAccess = new List<ResourceAccess> {
                         new ResourceAccess {
-                            Id = new Guid("e1fe6dd8-ba31-4d61-89e7-88639da4683d"),  // "User.Read"
+                            //Id = new Guid("e1fe6dd8-ba31-4d61-89e7-88639da4683d"),  // "User.Read"
+                            Id = AzureApps.MicrosoftGraph.ResourceAccess["User.Read"],
                             Type = "Scope"
                         }
                     }
                 }
             );
 
+            // Add OAuth2Permissions
+            var serviceApplicatoinPermissionUserImpersonationId = Guid.NewGuid();
+
+            var oauth2Permissions = new List<PermissionScope> {
+                new PermissionScope {
+                    AdminConsentDescription = string.Format("Allow the app to access {0} on behalf of the signed-in user.", servicesApplicationName),
+                    AdminConsentDisplayName = string.Format("Access {0}", servicesApplicationName),
+                    Id = serviceApplicatoinPermissionUserImpersonationId,
+                    IsEnabled = true,
+                    Type = "User",
+                    UserConsentDescription = string.Format("Allow the application to access {0} on your behalf.", servicesApplicationName),
+                    UserConsentDisplayName = string.Format("Access {0}", servicesApplicationName),
+                    Value = "user_impersonation"
+                }
+            };
+
+            var serviceApplicationApiApplication = new ApiApplication {
+                Oauth2PermissionScopes = oauth2Permissions
+            };
+
+            // !!!!! Oauth2AllowImplicitFlow !!!!!
+            var serviceApplicationWebApplication = new WebApplication {
+                HomePageUrl = "https://localhost",  // This is SignInUrl
+                //Oauth2AllowImplicitFlow = false,
+                ImplicitGrantSettings = new ImplicitGrantSettings {
+                    EnableIdTokenIssuance = true
+                }
+            };
+
+            var serviceApplicationPasswordCredentials = new List<PasswordCredential> {
+                new PasswordCredential {
+                    StartDateTime = DateTimeOffset.UtcNow,
+                    EndDateTime = DateTimeOffset.UtcNow.AddYears(2),
+                    CustomKeyIdentifier = ToBase64Bytes("Service Key"),
+                    DisplayName = "Service Key",
+                    KeyId = Guid.NewGuid(),
+                    SecretText = "not so secret right now"  // !!!!! ToDO !!!!!
+                }
+            };
+
             var serviceApplicationIdentifierUri = string.Format("https://{0}/{1}", tenantId, servicesApplicationName);
 
             var serviceApplicationRequest = new Application {
                 DisplayName = servicesApplicationName,
                 IsFallbackPublicClient = false,
-                //SignInUrl = "https://localhost",
                 IdentifierUris = new List<string> { serviceApplicationIdentifierUri },
                 Tags = new List<string> { "kakostan@microsoft.com" },
                 SignInAudience = "AzureADMyOrg",
                 AppRoles = serviceApplicationAppRoles,
-                RequiredResourceAccess = serviceApplicationRequiredResourceAccess
+                RequiredResourceAccess = serviceApplicationRequiredResourceAccess,
+                Api = serviceApplicationApiApplication,
+                Web = serviceApplicationWebApplication,
+                PasswordCredentials = serviceApplicationPasswordCredentials
             };
 
             var serviceApplication = graphServiceClient
@@ -291,15 +369,116 @@ namespace IAI {
 
             // Add current user as Writer, Approver and Administrator
             // !!!!! App role assignment is not supported yet, i.e. adding new app role assignments !!!!!
+            var approverAppRoleAssignmentRequest = new AppRoleAssignment {
+                //PrincipalDisplayName = "",
+                PrincipalType = "User",
+                PrincipalId = new Guid(me.Id),
+                ResourceId = new Guid(serviceApplicationServicePrincipal.Id),
+                ResourceDisplayName = "Approver",
+                Id = serviceApplicationApproverRoleId.ToString(),
+                AppRoleId = serviceApplicationApproverRoleId
+            };
+
+            var writerAppRoleAssignmentRequest = new AppRoleAssignment {
+                //PrincipalDisplayName = "",
+                PrincipalType = "User",
+                PrincipalId = new Guid(me.Id),
+                ResourceId = new Guid(serviceApplicationServicePrincipal.Id),
+                ResourceDisplayName = "Writer",
+                Id = serviceApplicationWriterRoleId.ToString(),
+                AppRoleId = serviceApplicationWriterRoleId
+            };
+
+            var adminAppRoleAssignmentRequest = new AppRoleAssignment {
+                //PrincipalDisplayName = "",
+                PrincipalType = "User",
+                PrincipalId = new Guid(me.Id),
+                ResourceId = new Guid(serviceApplicationServicePrincipal.Id),
+                ResourceDisplayName = "Admin",
+                Id = serviceApplicationAdministratorRoleId.ToString(),
+                AppRoleId = serviceApplicationAdministratorRoleId
+            };
+
+            //// !!!!! AddAsync() is not defined !!!!!
+            //var appRoleAssignment = graphServiceClient
+            //    .ServicePrincipals["{id}"]
+            //    .AppRoleAssignments
+            //    .Request()
+            //    .AddAsync(appRoleAssignmentRequest);
+
+            // Workaround using HttpClient
+            AddAppRoleAssignmentAsync(serviceApplicationServicePrincipal, microsoftGraphAuthenticatoinResult.AccessToken, approverAppRoleAssignmentRequest).Wait();
+            AddAppRoleAssignmentAsync(serviceApplicationServicePrincipal, microsoftGraphAuthenticatoinResult.AccessToken, writerAppRoleAssignmentRequest).Wait();
+            AddAppRoleAssignmentAsync(serviceApplicationServicePrincipal, microsoftGraphAuthenticatoinResult.AccessToken, adminAppRoleAssignmentRequest).Wait();
+
+
+
 
             // Client Application //////////////////////////////////////////////
             // Register client application
+            var clientApplicationRequiredResourceAccess = new List<RequiredResourceAccess>();
+
+            clientApplicationRequiredResourceAccess.Add(
+                new RequiredResourceAccess {
+                    ResourceAppId = serviceApplication.AppId,  // service application
+                    ResourceAccess = new List<ResourceAccess> {
+                        new ResourceAccess {
+                            Id = serviceApplicatoinPermissionUserImpersonationId,  // "user_impersonation"
+                            Type = "Scope"
+                        }
+                    }
+                }
+            );
+
+            clientApplicationRequiredResourceAccess.Add(
+                new RequiredResourceAccess {
+                    //ResourceAppId = "00000003-0000-0000-c000-000000000000",  // "Microsoft Graph"
+                    ResourceAppId = AzureApps.MicrosoftGraph.AppId,
+                    ResourceAccess = new List<ResourceAccess> {
+                        new ResourceAccess {
+                            //Id = new Guid("e1fe6dd8-ba31-4d61-89e7-88639da4683d"),  // "User.Read"
+                            Id = AzureApps.MicrosoftGraph.ResourceAccess["User.Read"],
+                            Type = "Scope"
+                        }
+                    }
+                }
+            );
+
+            var clientApplicationPublicClientApplication = new Microsoft.Graph.PublicClientApplication {
+                RedirectUris = new List<string> {
+                    "urn:ietf:wg:oauth:2.0:oob"
+                }
+            };
+
+            // !!!!! Oauth2AllowImplicitFlow = true !!!!!
+            // !!!!! Oauth2AllowUrlPathMatching = true !!!!!
+            var clientApplicationWebApplicatoin = new WebApplication {
+                //Oauth2AllowImplicitFlow = true,
+                ImplicitGrantSettings = new ImplicitGrantSettings {
+                    EnableIdTokenIssuance = true
+                }
+            };
+
+            var clientApplicationPasswordCredentials = new List<PasswordCredential> {
+                new PasswordCredential {
+                    StartDateTime = DateTimeOffset.UtcNow,
+                    EndDateTime = DateTimeOffset.UtcNow.AddYears(2),
+                    CustomKeyIdentifier = ToBase64Bytes("Client Key"),
+                    DisplayName = "Client Key",
+                    KeyId = Guid.NewGuid(),
+                    SecretText = "not so secret right now"  // !!!!! ToDO !!!!!
+                }
+            };
+
             var clientApplicationRequest = new Application {
                 DisplayName = clientsApplicationName,
                 IsFallbackPublicClient = true,
-                //SignInUrl = "https://localhost",
                 Tags = new List<string> { "kakostan@microsoft.com" },
-                SignInAudience = "AzureADMyOrg"
+                SignInAudience = "AzureADMyOrg",
+                RequiredResourceAccess = clientApplicationRequiredResourceAccess,
+                PublicClient = clientApplicationPublicClientApplication,
+                Web = clientApplicationWebApplicatoin,
+                PasswordCredentials = clientApplicationPasswordCredentials
             };
 
             var clientApplication = graphServiceClient
@@ -318,6 +497,8 @@ namespace IAI {
                 .GetAsync()
                 .Result;
 
+            ServicePrincipal clientApplicationServicePrincipal;
+
             if (clientApplicationServicePrincipals.Count == 0) {
                 // Create new client principal
                 var clientApplicationServicePrincipalRequest = new ServicePrincipal {
@@ -329,11 +510,13 @@ namespace IAI {
                     }
                 };
 
-                var clientApplicationServicePrincipal = graphServiceClient
+                clientApplicationServicePrincipal = graphServiceClient
                     .ServicePrincipals
                     .Request()
                     .AddAsync(clientApplicationServicePrincipalRequest)
                     .Result;
+            } else {
+                clientApplicationServicePrincipal = clientApplicationServicePrincipals.First();
             }
 
             // Try to add current user as app owner for client application, if it is not owner already
@@ -357,29 +540,53 @@ namespace IAI {
                     .Wait();
             }
 
-            //// ToDo: Update service application to include client applicatoin as knownClientApplications
-            //var knownClientApplications = new List<string> { clientApplication.AppId };
 
-            //// !!!!! KnownClientApplications functionality is not exposed yet !!!!!
-            //graphServiceClient
-            //    .Applications[serviceApplication.Id]
-            //    .Request()
-            //    .UpdateAsync(new Application {
-            //        KnownClientApplications = knownClientApplications
-            //    })
-            //    .Wait();
+            // Update service application to include client applicatoin as knownClientApplications
+            serviceApplication = graphServiceClient
+                .Applications[serviceApplication.Id]
+                .Request()
+                .UpdateAsync(new Application {
+                    Api = new ApiApplication {
+                        KnownClientApplications = new List<Guid> {
+                            new Guid(clientApplication.AppId)
+                        }
+                    }
+                })
+                .Result;
 
+            // Grant admin consent for service application "user_impersonation" API permissions of client applicatoin
+            var clientApplicationOAuth2PermissionGrantRequest0 = new OAuth2PermissionGrant {
+                Id = Guid.NewGuid().ToString(),
+                ConsentType = "AllPrincipals",
+                ClientId = clientApplicationServicePrincipal.Id,
+                ResourceId = serviceApplicationServicePrincipal.Id,
+                Scope = "user_impersonation",
+                StartTime = DateTimeOffset.UtcNow,
+                ExpiryTime = DateTimeOffset.UtcNow.AddYears(2),
+            };
 
+            var clientApplicationOAuth2PermissionGrant0 = graphServiceClient
+                .Oauth2PermissionGrants
+                .Request()
+                .AddAsync(clientApplicationOAuth2PermissionGrantRequest0)
+                .Result;
 
+            // Grant admin consent for Microsoft Graph "User.Read" API permissions of client applicatoin
+            var clientApplicationOAuth2PermissionGrantRequest1 = new OAuth2PermissionGrant {
+                Id = Guid.NewGuid().ToString(),
+                ConsentType = "AllPrincipals",
+                ClientId = clientApplicationServicePrincipal.Id,
+                ResourceId = GetServicePrincipalByAppIdAsync(graphServiceClient, AzureApps.MicrosoftGraph.AppId).Result.Id,
+                Scope = "User.Read",
+                StartTime = DateTimeOffset.UtcNow,
+                ExpiryTime = DateTimeOffset.UtcNow.AddYears(2),
+            };
 
-
-
-            //var publicClientApplication = PublicClientApplicationBuilder
-            //    .Create(clientId)
-            //    .WithTenantId(tenantId)
-            //    .Build();
-
-
+            var clientApplicationOAuth2PermissionGrant1 = graphServiceClient
+                .Oauth2PermissionGrants
+                .Request()
+                .AddAsync(clientApplicationOAuth2PermissionGrantRequest1)
+                .Result;
 
 
             //var tokenCredentials = new AzureAdTokenCredentials("microsoft.onmicrosoft.com", AzureEnvironments.AzureCloudEnvironment);
@@ -394,7 +601,10 @@ namespace IAI {
 
             //var tenantId = "tenantId (or directory Id) of your Azure Active Directory";
             //var azureServiceTokenProvider = new AzureServiceTokenProvider();
-            //var token = await azureServiceTokenProvider.GetAccessTokenAsync("https://management.azure.com", tenantId);
+            //var token = await azureServiceTokenProvider.GetAccessTokenAsync(
+            //    "https://management.azure.com",
+            //    tenantId
+            //);
             //var tokenCredentials = new TokenCredentials(token);
             //var azure = Azure
             //    .Configure()
@@ -409,12 +619,12 @@ namespace IAI {
             Console.WriteLine("Hello World!");
         }
 
-        public static int ReadIndex(int indexMaxValue, String selectionPrefix) {
+        public static int ReadIndex(int indexMaxValue, string selectionPrefix) {
             int? selection = null;
 
             while (!selection.HasValue) {
                 try {
-                    if (!String.IsNullOrEmpty(selectionPrefix)) {
+                    if (!string.IsNullOrEmpty(selectionPrefix)) {
                         Console.WriteLine(selectionPrefix);
                     }
 
@@ -619,8 +829,37 @@ namespace IAI {
             return applicationName;
         }
 
+        public static void ListSubscriptionsUsingRestClient(AzureEnvironment azureEnvironment, AzureCredentials azureCredentials) {
+            var restClient = RestClient
+                .Configure()
+                .WithEnvironment(azureEnvironment)
+                .WithCredentials(azureCredentials)
+                //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
+                .Build();
+
+            using (var subscriptionClient = new SubscriptionClient(restClient)) {
+                var subscriptionsList = subscriptionClient.Subscriptions.ListAsync().Result;
+
+                Console.WriteLine("Subscriptions:");
+
+                foreach (var subscription in subscriptionsList) {
+                    Console.WriteLine("SubscriptionId: {0}, DisplayName: {1}",
+                        subscription.SubscriptionId, subscription.DisplayName);
+                }
+            };
+
+            Console.WriteLine();
+        }
+
+
+
+
+        public static byte[] ToBase64Bytes(string message) {
+            return System.Text.Encoding.UTF8.GetBytes(message);
+        }
+
         public static RequiredResourceAccess GetRequiredResourceAccessByDisplayName(
-            GraphServiceClient graphServiceClient,
+            IGraphServiceClient graphServiceClient,
             string displayName,
             IEnumerable<string> requiredDelegatedPermissions
         ) {
@@ -671,27 +910,61 @@ namespace IAI {
             return requiredResourceAccess;
         }
 
+        public static async Task AddAppRoleAssignmentAsync(
+            ServicePrincipal servicePrincipal,
+            string accessToken,
+            AppRoleAssignment appRoleAssignment
+        ) {
+            const string ROLE_ASSIGNMENT_FORMATTER = "https://graph.microsoft.com/beta/servicePrincipals/{0}/appRoleAssignments";
+            var url = string.Format(ROLE_ASSIGNMENT_FORMATTER, servicePrincipal.Id);
 
+            using (var client = new HttpClient()) {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    accessToken
+                );
 
-        public static void ListSubscriptionsUsingRestClient(AzureEnvironment azureEnvironment, AzureCredentials azureCredentials) {
-            var restClient = RestClient
-                .Configure()
-                .WithEnvironment(azureEnvironment)
-                .WithCredentials(azureCredentials)
-                //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
-                .Build();
+                var content = new StringContent(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(appRoleAssignment),
+                    System.Text.Encoding.UTF8,
+                    "application/json"
+                );
 
-            var subscriptionClient = new SubscriptionClient(restClient);
-            var subscriptionsList = subscriptionClient.Subscriptions.ListAsync().Result;
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                var response = await client.PostAsync(url, content);
 
-            Console.WriteLine("Subscriptions:");
+                if (response.IsSuccessStatusCode) {
+                    return;
+                }
+                else {
+                    throw new HttpRequestException(response.ReasonPhrase);
+                }
+            }
+        }
 
-            foreach (var subscription in subscriptionsList) {
-                Console.WriteLine("SubscriptionId: {0}, DisplayName: {1}",
-                    subscription.SubscriptionId, subscription.DisplayName);
+        public static async Task<ServicePrincipal> GetServicePrincipalByAppIdAsync(
+            IGraphServiceClient graphServiceClient,
+            string AppId
+        ) {
+            var clientAppIdFilterClause = string.Format("AppId eq '{0}'", AppId);
+
+            var clientApplicationServicePrincipals = await graphServiceClient
+                .ServicePrincipals
+                .Request()
+                .Filter(clientAppIdFilterClause)
+                .GetAsync();
+
+            if (clientApplicationServicePrincipals.Count == 0) {
+                var msg = string.Format("Unable to find ServicePrincipal with AppId={0}", AppId);
+                throw new System.Exception(msg);
             }
 
-            Console.WriteLine();
+            if (clientApplicationServicePrincipals.Count > 1) {
+                var msg = string.Format("Found more than one ServicePrincipal with AppId={0}", AppId);
+                throw new System.Exception(msg);
+            }
+
+            return clientApplicationServicePrincipals.First();
         }
     }
 }

@@ -313,6 +313,8 @@ namespace Opc.Ua.Test {
                     return GetRandomArray<Variant>(useBoundaryValues, length, fixedLength);
                 case BuiltInType.Enumeration:
                     return GetRandomArray<int>(useBoundaryValues, length, fixedLength);
+                case BuiltInType.ExtensionObject:
+                    return GetRandomArray<ExtensionObject>(useBoundaryValues, length, fixedLength);
                 case BuiltInType.Number: {
                         var builtInType3 = (BuiltInType)(_random.NextInt32(9) + 2);
                         return GetRandomArrayInVariant(builtInType3, useBoundaryValues, length, fixedLength);
@@ -724,6 +726,8 @@ namespace Opc.Ua.Test {
                         return new Variant(GetRandomArray<StatusCode>(useBoundaryValues: true, num, fixedLength: true));
                     case BuiltInType.Variant:
                         return new Variant(GetRandomArray<Variant>(useBoundaryValues: true, num, fixedLength: true));
+                    case BuiltInType.ExtensionObject:
+                        return new Variant(GetRandomArray<ExtensionObject>(useBoundaryValues: true, num, fixedLength: true));
                     default:
                         throw new ArgumentException($"Unexpected type {builtInType} constructing variant");
                 }
@@ -745,7 +749,7 @@ namespace Opc.Ua.Test {
             try {
                 string text = null;
                 List<string> list = null;
-                var stream = typeof(Opc.Ua.Test.TestDataGenerator).GetTypeInfo().Assembly.GetManifestResourceStream(resourceName);
+                var stream = typeof(Opc.Ua.Test.DataGenerator).GetTypeInfo().Assembly.GetManifestResourceStream(resourceName);
                 if (stream == null) {
                     var fileInfo = new FileInfo(resourceName);
                     stream = fileInfo.OpenRead();

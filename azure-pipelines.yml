@@ -6,6 +6,8 @@ jobs:
   displayName: Prepare Build Jobs
   pool:
     name: Hosted Windows 2019 with VS2019
+  variables:
+    skipComponentGovernanceDetection: true
   steps:
   - task: PowerShell@2
     name: buildmatrix
@@ -22,6 +24,13 @@ jobs:
   pool:
     name: $(poolName)
   steps:
+  - task: UseDotNet@2
+    displayName: 'Install .NET Core SDK'
+    inputs:
+      packageType: sdk
+      version: 2.2.x
+      includePreviewVersions: false
+      installationPath: $(Agent.ToolsDirectory)/dotnet
   - task: DotNetCoreCLI@2
     displayName: Release Build
     inputs:
@@ -42,6 +51,8 @@ jobs:
   displayName: Prepare Test Jobs
   pool:
     name: Hosted Windows 2019 with VS2019
+  variables:
+    skipComponentGovernanceDetection: true
   steps:
   - task: PowerShell@2
     name: testmatrix
@@ -55,9 +66,18 @@ jobs:
   dependsOn: testprep
   strategy:
     matrix: $[dependencies.testprep.outputs['testmatrix.jobMatrix'] ]
+  variables:
+    skipComponentGovernanceDetection: true
   pool:
     name: $(poolName)
   steps:
+  - task: UseDotNet@2
+    displayName: 'Install .NET Core SDK'
+    inputs:
+      packageType: sdk
+      version: 2.2.x
+      includePreviewVersions: false
+      installationPath: $(Agent.ToolsDirectory)/dotnet
   - task: DotNetCoreCLI@2
     displayName: Test
     inputs:
@@ -76,6 +96,13 @@ jobs:
     - msbuild
     - npm
   steps:
+  - task: UseDotNet@2
+    displayName: 'Install .NET Core SDK'
+    inputs:
+      packageType: sdk
+      version: 2.2.x
+      includePreviewVersions: false
+      installationPath: $(Agent.ToolsDirectory)/dotnet
   - task: DotNetCoreCLI@2
     displayName: Restore
     inputs:
@@ -183,6 +210,13 @@ jobs:
   pool:
     name: Hosted Windows 2019 with VS2019
   steps:
+  - task: UseDotNet@2
+    displayName: 'Install .NET Core SDK'
+    inputs:
+      packageType: sdk
+      version: 2.2.x
+      includePreviewVersions: false
+      installationPath: $(Agent.ToolsDirectory)/dotnet
   - task: DotNetCoreCLI@2
     displayName: Build
     inputs:
@@ -217,7 +251,7 @@ jobs:
       publishFeedCredentials: azureiiot-dev
 - job: releasepack
   displayName: Release packages
-  condition: and(succeeded(), ne(variables['RELEASE_BUILD'], ''))
+  condition: and(succeeded(), and(ne(variables['RELEASE_BUILD'], ''), eq(variables['SKIP_NUGET'], '')))
   dependsOn:
     - sdl
     - buildall
@@ -225,6 +259,13 @@ jobs:
   pool:
     name: Hosted Windows 2019 with VS2019
   steps:
+  - task: UseDotNet@2
+    displayName: 'Install .NET Core SDK'
+    inputs:
+      packageType: sdk
+      version: 2.2.x
+      includePreviewVersions: false
+      installationPath: $(Agent.ToolsDirectory)/dotnet
   - task: DotNetCoreCLI@2
     displayName: Build
     inputs:
@@ -363,6 +404,8 @@ jobs:
     - devpack
     - releasepack
   condition: or(succeeded('devpack'), succeeded('releasepack'))
+  variables:
+    skipComponentGovernanceDetection: true
   steps:
   - task: PowerShell@2
     name: acrmatrix
@@ -377,12 +420,22 @@ jobs:
   dependsOn: imagesprep
   strategy:
     matrix: $[ dependencies.imagesprep.outputs['acrmatrix.acrMatrix'] ]
+  variables:
+    skipComponentGovernanceDetection: true
+    PROJECT_BUILD: 1
   steps:
   - task: AzureCLI@1
-    name: acrbuild
-    displayName: Build Image
+    name: acrbuildr
+    displayName: Build Release Images
     inputs:
       azureSubscription: azureiiot
       scriptLocation: inlineScript
       inlineScript: powershell ./tools/acrbuild.ps1 $(dockerFolder)
+  - task: AzureCLI@1
+    name: acrbuildd
+    displayName: Build Debug Images
+    inputs:
+      azureSubscription: azureiiot
+      scriptLocation: inlineScript
+      inlineScript: powershell ./tools/acrbuild.ps1 $(dockerFolder) -debug
       

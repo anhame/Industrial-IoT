@@ -10,6 +10,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Twin {
     using Microsoft.Azure.IIoT.OpcUa.Protocol.Services;
     using Microsoft.Azure.IIoT.OpcUa.Registry.Models;
     using Microsoft.Azure.IIoT.OpcUa.Twin.Default;
+    using Microsoft.Azure.IIoT.OpcUa.Testing.Runtime;
     using Microsoft.Azure.IIoT.Hub.Client;
     using Microsoft.Azure.IIoT.Utils;
     using Microsoft.Extensions.Configuration;
@@ -20,7 +21,6 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Twin {
     using System;
     using System.Net.Http;
     using System.Text;
-    using Microsoft.Azure.IIoT.OpcUa.Testing.Runtime;
 
     /// <summary>
     /// Startup class for tests

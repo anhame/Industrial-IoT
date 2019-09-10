@@ -83,7 +83,7 @@ namespace Opc.Ua.Test {
         /// <summary>
         /// Frequency of boundary values used
         /// </summary>
-        public int BoundaryValueFrequency { get; set; } = 20;
+        public int BoundaryValueFrequency { get; set; } = 29;
 
         /// <summary>
         /// Create generator
@@ -367,7 +367,7 @@ namespace Opc.Ua.Test {
             for (var i = 0; i < array.Length; i++) {
                 object obj = null;
                 do {
-                    if (!useBoundaryValues || !UseBoundaryValue()) {
+                    if (useBoundaryValues && UseBoundaryValue()) {
                         obj = GetBoundaryValue(typeof(T));
                     }
                     if (obj == null) {
@@ -655,7 +655,8 @@ namespace Opc.Ua.Test {
 
 
         private bool UseBoundaryValue() {
-            return _random.NextInt32(99) < BoundaryValueFrequency;
+            var test = _random.NextInt32(99);
+            return test < BoundaryValueFrequency;
         }
 
         private Variant[] GetRandomArrayInVariant(BuiltInType builtInType, bool useBoundaryValues,
@@ -882,14 +883,12 @@ namespace Opc.Ua.Test {
             new BoundaryValues(typeof(DateTime), DateTime.MinValue, DateTime.MaxValue,
                 new DateTime(1099, 1, 1), new DateTime(2039, 4, 4),
                 new DateTime(2001, 9, 11, 9, 15, 0, DateTimeKind.Local)),
-            new BoundaryValues(typeof(Guid), Guid.Empty),
-            new BoundaryValues(typeof(Uuid), Uuid.Empty),
+            new BoundaryValues(typeof(Guid)),
+            new BoundaryValues(typeof(Uuid)),
             new BoundaryValues(typeof(byte[]), new byte[0]),
             new BoundaryValues(typeof(XmlElement)),
-            new BoundaryValues(typeof(NodeId), new NodeId(Guid.Empty),
-                new NodeId(string.Empty), new NodeId(new byte[0])),
-            new BoundaryValues(typeof(ExpandedNodeId), new ExpandedNodeId(Guid.Empty),
-                new ExpandedNodeId(string.Empty), new ExpandedNodeId(new byte[0])),
+            new BoundaryValues(typeof(NodeId)),
+            new BoundaryValues(typeof(ExpandedNodeId)),
             new BoundaryValues(typeof(QualifiedName)),
             new BoundaryValues(typeof(LocalizedText)),
             new BoundaryValues(typeof(StatusCode), 0u, 1073741824u, 2147483648u),

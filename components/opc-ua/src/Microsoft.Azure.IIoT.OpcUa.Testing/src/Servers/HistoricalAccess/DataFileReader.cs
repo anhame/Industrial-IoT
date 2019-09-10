@@ -232,7 +232,7 @@ namespace HistoricalAccess {
                     dataValue.Value = generator.GetRandom(item.DataType);
                 }
                 else {
-                    dataValue.Value = generator.GetRandomArray(item.DataType, false, 10, false);
+                    dataValue.Value = generator.GetRandomArray(item.DataType, 10, false);
                 }
 
                 // add record to table.

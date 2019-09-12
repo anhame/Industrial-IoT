@@ -438,17 +438,19 @@ namespace Microsoft.Azure.IIoT.Hub.Mock {
             /// Update twin
             /// </summary>
             /// <param name="twin"></param>
-            public void UpdateTwin(DeviceTwinModel twin) {
-                Twin.Tags = Merge(Twin.Tags, twin.Tags);
-                if (Twin.Properties == null) {
-                    Twin.Properties = new TwinPropertiesModel();
+            internal void UpdateTwin(DeviceTwinModel twin) {
+                lock (_lock) {
+                    Twin.Tags = Merge(Twin.Tags, twin.Tags);
+                    if (Twin.Properties == null) {
+                        Twin.Properties = new TwinPropertiesModel();
+                    }
+                    Twin.Properties.Desired = Merge(
+                        Twin.Properties.Desired, twin.Properties?.Desired);
+                    Twin.Properties.Reported = Merge(
+                        Twin.Properties.Reported, twin.Properties?.Reported);
+                    Twin.LastActivityTime = DateTime.UtcNow;
+                    Twin.Etag = Device.Etag = Guid.NewGuid().ToString();
                 }
-                Twin.Properties.Desired = Merge(
-                    Twin.Properties.Desired, twin.Properties?.Desired);
-                Twin.Properties.Reported = Merge(
-                    Twin.Properties.Reported, twin.Properties?.Reported);
-                Twin.LastActivityTime = DateTime.UtcNow;
-                Twin.Etag = Device.Etag = Guid.NewGuid().ToString();
             }
 
             /// <summary>
@@ -456,8 +458,10 @@ namespace Microsoft.Azure.IIoT.Hub.Mock {
             /// </summary>
             /// <param name="client"></param>
             public void Connect(IIoTClientCallback client) {
-                Connection = client;
-                Twin.ConnectionState = client == null ? "disconnected" : "connected";
+                lock (_lock) {
+                    Connection = client;
+                    Twin.ConnectionState = client == null ? "disconnected" : "connected";
+                }
             }
 
             /// <summary>

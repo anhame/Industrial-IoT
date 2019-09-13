@@ -1,4 +1,4 @@
-﻿namespace IAI {
+namespace IAI {
 
     using System;
     using System.Collections;
@@ -24,6 +24,17 @@
     using Microsoft.Graph.Auth;
 
     using Microsoft.Azure.Management.KeyVault.Fluent;
+    using Microsoft.Azure.Management.KeyVault.Fluent.Models;
+    using Microsoft.Azure.Management.Storage.Fluent;
+    using Microsoft.Azure.Management.Storage.Fluent.Models;
+    using Microsoft.Azure.Management.IotHub;
+    using Microsoft.Azure.Management.IotHub.Models;
+    using Microsoft.Azure.Management.CosmosDB.Fluent;
+    using Microsoft.Azure.Management.CosmosDB.Fluent.Models;
+    using Microsoft.Azure.Management.ServiceBus.Fluent;
+    using Microsoft.Azure.Management.ServiceBus.Fluent.Models;
+    using Microsoft.Azure.Management.EventHub.Fluent;
+    using Microsoft.Azure.Management.EventHub.Fluent.Models;
 
     class Program {
 
@@ -47,6 +58,8 @@
             //var tenantId = "72f988bf-86f1-41af-91ab-2d7cd011db47";  // microsoft.onmicrosoft.com
             var tenantId = "6e660ce4-d51a-4585-80c6-58035e212354";  // opcwalls.onmicrosoft.com
             //var tenantId = "organizations";  // Generic one for multi-tenant applications
+
+            var tenantIdGuid = new Guid(tenantId);
 
             // ClientId of AzureIndustrialIoTIAI
             const string iaiClientID = "fb2ca262-60d8-4167-ac33-1998d6d5c50b";
@@ -105,7 +118,8 @@
                 //microsoftGraphTokenCredentials,
                 azureManagementTokenCredentials,
                 microsoftGraphTokenCredentials,
-                microsoftGraphAuthenticatoinResult.TenantId,
+                //microsoftGraphAuthenticatoinResult.TenantId,
+                tenantId,
                 azureEnvironment
             );
 
@@ -137,15 +151,42 @@
             //////////////////////////////////////////////////////
 
 
-            var resourceGroup = SelectOrCreateResourceGroup(azure);
-
 
 
 
             var applicationName = GetApplicationName();
 
+            var resourceGroup = SelectOrCreateResourceGroup(azure, applicationName);
+
             var servicesApplicationName = applicationName + "-services";
             var clientsApplicationName = applicationName + "-clients";
+
+            // KeyVault names
+            var keyVaultName = applicationName + "-KV";
+
+            // Storage Account names
+            var storageAccountName = SdkContext.RandomResourceName("storage", 12);
+
+            // IoT hub names
+            var iotHubName = SdkContext.RandomResourceName("iothub-", 12);
+            var iotHubStorageContainerName = iotHubName.ToLower();
+            var iotHubOnboardingConsumerGroupName = "onboarding";
+
+            // CosmosDB names
+            var documentDBName = SdkContext.RandomResourceName("documentDB-", 5);
+
+            // Service Bus Namespace names
+            var serviceBusNamespaceName = SdkContext.RandomResourceName("sb-", 5);
+            const string serviceBusAuthorizationRuleName = "RootManageSharedAccessKey";
+
+            // Event Hub Namespace names
+            var eventHubNamespaceName = SdkContext.RandomResourceName("eventhubnamespace-", 5);
+            const string eventHubNamespaceAuthorizationRuleName = "RootManageSharedAccessKey";
+
+            var eventHubName = SdkContext.RandomResourceName("eventhub-", 5);
+            var eventHubAuthorizationRuleName = SdkContext.RandomResourceName("iothubroutes-" + eventHubName, 5);
+
+
 
             //var authProvider = new InteractiveAuthenticationProvider(
             //    publicClientApplication,
@@ -298,7 +339,10 @@
                 DisplayName = servicesApplicationName,
                 IsFallbackPublicClient = false,
                 IdentifierUris = new List<string> { serviceApplicationIdentifierUri },
-                Tags = new List<string> { "kakostan@microsoft.com" },
+                Tags = new List<string> {
+                    "kakostan@microsoft.com",
+                    "omp"
+                },
                 SignInAudience = "AzureADMyOrg",
                 AppRoles = serviceApplicationAppRoles,
                 RequiredResourceAccess = serviceApplicationRequiredResourceAccess,
@@ -332,7 +376,8 @@
                     DisplayName = servicesApplicationName,
                     AppId = serviceApplication.AppId,
                     Tags = new List<string> {
-                        "kakostan@microsoft.com"//,
+                        "kakostan@microsoft.com",
+                        "omp"
                         //WindowsAzureActiveDirectoryIntegratedApp
                     }
                 };
@@ -473,7 +518,10 @@
             var clientApplicationRequest = new Application {
                 DisplayName = clientsApplicationName,
                 IsFallbackPublicClient = true,
-                Tags = new List<string> { "kakostan@microsoft.com" },
+                Tags = new List<string> {
+                    "kakostan@microsoft.com",
+                    "omp"
+                },
                 SignInAudience = "AzureADMyOrg",
                 RequiredResourceAccess = clientApplicationRequiredResourceAccess,
                 PublicClient = clientApplicationPublicClientApplication,
@@ -505,7 +553,8 @@
                     DisplayName = clientsApplicationName,
                     AppId = clientApplication.AppId,
                     Tags = new List<string> {
-                        "kakostan@microsoft.com"//,
+                        "kakostan@microsoft.com",
+                        "omp"
                         //WindowsAzureActiveDirectoryIntegratedApp
                     }
                 };
@@ -556,39 +605,381 @@
 
             // Grant admin consent for service application "user_impersonation" API permissions of client applicatoin
             var clientApplicationOAuth2PermissionGrantRequest0 = new OAuth2PermissionGrant {
+            var clientApplicationOAuth2PermissionGrantUserImpersonationRequest = new OAuth2PermissionGrant {
                 Id = Guid.NewGuid().ToString(),
                 ConsentType = "AllPrincipals",
                 ClientId = clientApplicationServicePrincipal.Id,
                 ResourceId = serviceApplicationServicePrincipal.Id,
                 Scope = "user_impersonation",
                 StartTime = DateTimeOffset.UtcNow,
-                ExpiryTime = DateTimeOffset.UtcNow.AddYears(2),
+                ExpiryTime = DateTimeOffset.UtcNow.AddYears(2)
             };
 
             var clientApplicationOAuth2PermissionGrant0 = graphServiceClient
+            var clientApplicationOAuth2PermissionGrantUserImpersonation = graphServiceClient
                 .Oauth2PermissionGrants
                 .Request()
-                .AddAsync(clientApplicationOAuth2PermissionGrantRequest0)
+                .AddAsync(clientApplicationOAuth2PermissionGrantUserImpersonationRequest)
                 .Result;
 
             // Grant admin consent for Microsoft Graph "User.Read" API permissions of client applicatoin
             var clientApplicationOAuth2PermissionGrantRequest1 = new OAuth2PermissionGrant {
+            var clientApplicationOAuth2PermissionGrantUserReadRequest = new OAuth2PermissionGrant {
                 Id = Guid.NewGuid().ToString(),
                 ConsentType = "AllPrincipals",
                 ClientId = clientApplicationServicePrincipal.Id,
                 ResourceId = GetServicePrincipalByAppIdAsync(graphServiceClient, AzureApps.MicrosoftGraph.AppId).Result.Id,
                 Scope = "User.Read",
                 StartTime = DateTimeOffset.UtcNow,
-                ExpiryTime = DateTimeOffset.UtcNow.AddYears(2),
+                ExpiryTime = DateTimeOffset.UtcNow.AddYears(2)
             };
 
             var clientApplicationOAuth2PermissionGrant1 = graphServiceClient
                 .Oauth2PermissionGrants
                 .Request()
-                .AddAsync(clientApplicationOAuth2PermissionGrantRequest1)
+                .AddAsync(clientApplicationOAuth2PermissionGrantUserReadRequest)
                 .Result;
 
 
+
+
+            // Create Azure KeyVault
+            var restClient = RestClient
+                .Configure()
+                .WithEnvironment(azureEnvironment)
+                .WithCredentials(azureCredentials)
+                //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
+                .Build();
+
+            //var restClientRootHttpHandler = restClient.RootHttpHandler;
+            //var restClientDelegatingHandlers = restClient.Handlers.ToArray();
+
+            using (var keyVaultManagementClient = new KeyVaultManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                var keyVaultAccessPolicies = new List<AccessPolicyEntry> {
+                    new AccessPolicyEntry {
+                        TenantId = tenantIdGuid,
+                        ObjectId = serviceApplicationServicePrincipal.Id,
+                        Permissions = new Microsoft.Azure.Management.KeyVault.Fluent.Models.Permissions {
+                            Secrets = new List<string> { "get" },
+                            Certificates = new List<string> { "get", "list" }
+                        }
+                    },
+                    new AccessPolicyEntry {
+                        TenantId = tenantIdGuid,
+                        ObjectId = me.Id,
+                        Permissions = new Microsoft.Azure.Management.KeyVault.Fluent.Models.Permissions {
+                            Keys = new List<string> { "get", "list", "sign" },
+                            Secrets = new List<string> { "get", "list", "set", "delete" },
+                            Certificates = new List<string> { "get", "list", "update", "create", "import" }
+                        }
+                    }
+                };
+
+                keyVaultAccessPolicies.ElementAt(0).Validate();
+                keyVaultAccessPolicies.ElementAt(1).Validate();
+
+                var keyVaultCreateOrUpdateParametersInner = new VaultCreateOrUpdateParametersInner {
+                    Location = resourceGroup.RegionName,
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    },
+                    Properties = new VaultProperties {
+                        EnabledForDeployment = false,
+                        EnabledForTemplateDeployment = false,
+                        EnabledForDiskEncryption = false,
+                        TenantId = tenantIdGuid,
+                        Sku = new Microsoft.Azure.Management.KeyVault.Fluent.Models.Sku {
+                            Name = Microsoft.Azure.Management.KeyVault.Fluent.Models.SkuName.Premium,  // !!!!!
+                            //Family = "A" !!!!!
+                        },
+                        AccessPolicies = keyVaultAccessPolicies
+                    }
+                };
+
+                keyVaultCreateOrUpdateParametersInner.Validate();
+
+                keyVaultManagementClient
+                    .Vaults
+                    .CreateOrUpdateWithHttpMessagesAsync(
+                        resourceGroup.Name,
+                        keyVaultName,
+                        keyVaultCreateOrUpdateParametersInner
+                    )
+                    .Wait();
+            }
+
+            // Create Storage Account
+            StorageAccountInner storageAccount;
+            StorageAccountKey storageAccountKey;
+            BlobContainerInner iotHubBlobContainer;
+
+            using (var storageManagementClient = new StorageManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                var storageAccountCreateParameters = new StorageAccountCreateParameters {
+                    Location = resourceGroup.RegionName,
+                    Kind = Kind.Storage,
+                    Sku = new SkuInner {
+                        Name = Microsoft.Azure.Management.Storage.Fluent.Models.SkuName.StandardLRS  // !!!!!
+                    },
+                    EnableHttpsTrafficOnly = true,
+                    NetworkRuleSet = new Microsoft.Azure.Management.Storage.Fluent.Models.NetworkRuleSet {
+                        Bypass = Bypass.AzureServices,
+                        VirtualNetworkRules = new List<Microsoft.Azure.Management.Storage.Fluent.Models.VirtualNetworkRule> {},
+                        IpRules = new List<IPRule> {},
+                        DefaultAction = Microsoft.Azure.Management.Storage.Fluent.Models.DefaultAction.Allow
+                    },
+                    Encryption = new Encryption {
+                        Services = new EncryptionServices {
+                            File = new EncryptionService {
+                                Enabled = true
+                            },
+                            Blob = new EncryptionService {
+                                Enabled = true
+                            }
+                        },
+                        KeySource = KeySource.MicrosoftStorage
+                    },
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                storageAccountCreateParameters.Validate();
+
+                storageAccount = storageManagementClient
+                    .StorageAccounts
+                    .CreateAsync(
+                        resourceGroup.Name,
+                        storageAccountName,
+                        storageAccountCreateParameters
+                    )
+                    .Result;
+
+                var keysList = storageManagementClient.StorageAccounts.ListKeysAsync(resourceGroup.Name, storageAccount.Name).Result;
+                storageAccountKey = keysList.Keys.First();
+
+                // ToDo: Figure out if I really need to explicitly create the container. template.json does not seem to do this.
+                iotHubBlobContainer = storageManagementClient
+                    .BlobContainers
+                    .CreateAsync(
+                        resourceGroup.Name,
+                        storageAccountName,
+                        iotHubStorageContainerName,
+                        PublicAccess.None
+                    ).Result;
+            }
+
+            const string storageAccountConectionStringFormat = "DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}";
+            var storageAccountConectionString = string.Format(
+                storageAccountConectionStringFormat,
+                storageAccount.Name,
+                storageAccountKey.Value,
+                azureEnvironment.StorageEndpointSuffix
+            );
+
+            // Create IoT Hub
+            var iotHubRestClient = RestClient
+                .Configure()
+                .WithEnvironment(azureEnvironment)
+                .WithCredentials(azureCredentials)
+                //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
+                .Build();
+
+            var iotHubRestClientRootHttpHandler = iotHubRestClient.RootHttpHandler;
+            var iotHubRestClientDelegatingHandlers = iotHubRestClient.Handlers.ToArray();
+
+            var iotHubClient = new IotHubClient(azureCredentials, iotHubRestClientRootHttpHandler, iotHubRestClientDelegatingHandlers) {
+                SubscriptionId = subscription.SubscriptionId
+            };
+
+            var iotHubSkuInfo = new IotHubSkuInfo(
+                "S1",  // !!!!! ToDo: Add selection.
+                IotHubSkuTier.Standard,  // !!!!! ToDo: Add selection.
+                1  // !!!!! ToDo: Add selection.
+            );
+            iotHubSkuInfo.Validate();
+
+            var iotHubProperties = new IotHubProperties {
+                IpFilterRules = new List<IpFilterRule>(),
+                EnableFileUploadNotifications = true,
+                Features = "None",
+                EventHubEndpoints = new Dictionary<string, EventHubProperties> {
+                    { "events", new EventHubProperties {
+                            RetentionTimeInDays = 1,
+                            PartitionCount = 4 // !!!!!
+                        }
+                    },
+                    { "operationsMonitoringEvents", new EventHubProperties {
+                            RetentionTimeInDays = 1,
+                            PartitionCount = 4 // !!!!!
+                        }
+                    }
+                },
+                Routing = new RoutingProperties {
+                    Endpoints = new RoutingEndpoints {
+                        ServiceBusQueues = null,
+                        ServiceBusTopics = null,
+                        EventHubs = null,
+                        StorageContainers = null
+                    },
+                    Routes = null,
+                    FallbackRoute = new FallbackRouteProperties {
+                        Name = "$fallback",
+                        //Source = "DeviceMessages",  // Seem to be set by FallbackRouteProperties constructor.
+                        Condition = "true",
+                        IsEnabled = true,
+                        EndpointNames = new List<string> { "events" }
+                    }
+                },
+                StorageEndpoints = new Dictionary<string, StorageEndpointProperties> {
+                    { "$default", new StorageEndpointProperties {
+                            SasTtlAsIso8601 = TimeSpan.FromHours(1),
+                            ConnectionString = storageAccountConectionString,
+                            ContainerName = iotHubStorageContainerName
+                        }
+                    }
+                },
+                MessagingEndpoints = new Dictionary<string, MessagingEndpointProperties> {
+                    { "fileNotifications", new MessagingEndpointProperties {
+                            LockDurationAsIso8601 = TimeSpan.FromMinutes(1),
+                            TtlAsIso8601 = TimeSpan.FromHours(1),
+                            MaxDeliveryCount = 10
+                        }
+                    }
+                },
+                CloudToDevice = new CloudToDeviceProperties {
+                    MaxDeliveryCount = 10,
+                    DefaultTtlAsIso8601 = TimeSpan.FromHours(1),
+                    Feedback = new FeedbackProperties {
+                        LockDurationAsIso8601 = TimeSpan.FromMinutes(1),
+                        TtlAsIso8601 = TimeSpan.FromHours(1),
+                        MaxDeliveryCount = 10
+                    }
+                }
+            };
+
+            iotHubProperties.Validate();
+
+            var iotHubDescriptionRequest = new IotHubDescription(
+                resourceGroup.RegionName,
+                iotHubSkuInfo,
+                Guid.NewGuid().ToString(),
+                iotHubName,
+                "Microsoft.Devices/Iothubs",
+                new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                },
+                null,
+                iotHubProperties
+            );
+
+            iotHubDescriptionRequest.Validate();
+
+            var iotHubDescription = iotHubClient
+                .IotHubResource
+                .CreateOrUpdate(
+                    resourceGroup.Name,
+                    iotHubName,
+                    iotHubDescriptionRequest
+                );
+
+            var eventHubConsumerGroupInfo = iotHubClient
+                .IotHubResource
+                .CreateEventHubConsumerGroup(
+                    resourceGroup.Name,
+                    iotHubName,
+                    "events",
+                    iotHubOnboardingConsumerGroupName
+                );
+
+            // Create CosmosDB
+            DatabaseAccountInner cosmosDBAccount;
+
+            using (var cosmosDBManagementClient = new CosmosDB(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                var databaseAccountParameters = new DatabaseAccountCreateUpdateParametersInner {
+                    Location = resourceGroup.RegionName,
+                    //DatabaseAccountOfferType = "Standard",
+                    Kind = "GlobalDocumentDB",
+                    ConsistencyPolicy = new ConsistencyPolicy {
+                        DefaultConsistencyLevel = DefaultConsistencyLevel.Strong,  // !!!!! Add selection
+                        MaxStalenessPrefix = 10,  // !!!!! Add selection
+                        MaxIntervalInSeconds = 5  // !!!!! Add selection
+                    },
+                    Locations = new List<Microsoft.Azure.Management.CosmosDB.Fluent.Models.Location> {
+                        new Microsoft.Azure.Management.CosmosDB.Fluent.Models.Location {
+                            LocationName = resourceGroup.RegionName,
+                            FailoverPriority = 0,
+                            IsZoneRedundant = false
+                        }
+                    }
+                };
+
+                databaseAccountParameters.Validate();
+
+                cosmosDBAccount = cosmosDBManagementClient
+                    .DatabaseAccounts
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        documentDBName,
+                        databaseAccountParameters
+                    ).Result;
+            }
+
+
+            // Create Service Bus Namespace
+            NamespaceModelInner serviceBusNamespace;
+            //SharedAccessAuthorizationRuleInner serviceBusAuthorizationRule;
+            string serviceBusConnectionString;
+
+            using (var serviceBusManagementClient = new Microsoft.Azure.Management.ServiceBus.Fluent.ServiceBusManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                var namespaceModel = new NamespaceModelInner {
+                    Location = resourceGroup.RegionName,
+                    Sku = new Microsoft.Azure.Management.ServiceBus.Fluent.Models.Sku {
+                        Name = "Standard",  // !!!!! Add selection
+                        Tier = "Standard"  // !!!!! Add selection
+                    }
+                };
+
+                namespaceModel.Validate();
+
+                serviceBusNamespace = serviceBusManagementClient
+                    .Namespaces
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        serviceBusNamespaceName,
+                        namespaceModel
+                    ).Result;
+
+                //serviceBusAuthorizationRule = serviceBusManagementClient
+                //    .Namespaces
+                //    .GetAuthorizationRuleAsync(
+                //        resourceGroup.Name,
+                //        serviceBusNamespaceName,
+                //        serviceBusAuthorizationRuleName
+                //    ).Result;
+
+                var keysList = serviceBusManagementClient
+                    .Namespaces
+                    .ListKeysAsync(
+                        resourceGroup.Name,
+                        serviceBusNamespaceName,
+                        serviceBusAuthorizationRuleName
+                    ).Result;
+
+                serviceBusConnectionString = keysList.PrimaryConnectionString;
+            }
+
+            // Create Azure Event Hub Namespace and Azure Event Hub
             //var tokenCredentials = new AzureAdTokenCredentials("microsoft.onmicrosoft.com", AzureEnvironments.AzureCloudEnvironment);
             //var tokenProvider = new AzureAdTokenProvider(tokenCredentials);
 
@@ -628,7 +1019,7 @@
                         Console.WriteLine(selectionPrefix);
                     }
 
-                    int selectionTmp = Convert.ToInt32(Console.ReadLine());
+                    var selectionTmp = Convert.ToInt32(Console.ReadLine());
 
                     if (selectionTmp < 0 || selectionTmp >= indexMaxValue) {
                         Console.WriteLine("Invalid Value. Please select a number in range 0 to {0}.",
@@ -684,7 +1075,7 @@
 
         public static string GetTenantID() {
             Console.WriteLine("Please provide your TenantId:");
-            string tenantId = Console.ReadLine();
+            var tenantId = Console.ReadLine();
             return tenantId;
         }
 
@@ -720,12 +1111,12 @@
             return account;
         }
 
-        public static ISubscription SelectSubscription(Azure.IAuthenticated authenticated) {
+        public static Microsoft.Azure.Management.ResourceManager.Fluent.ISubscription SelectSubscription(Azure.IAuthenticated authenticated) {
             // ToDo: Handle exceptions when user does npot have enough permissions to list subscriptions.
             var subscriptionsList = authenticated.Subscriptions.List();
             var subscriptionsCount = subscriptionsList.Count();
 
-            ISubscription subscription;
+            Microsoft.Azure.Management.ResourceManager.Fluent.ISubscription subscription;
 
             if (subscriptionsCount == 0) {
                 throw new SystemException("The account does not contain any subscription");
@@ -754,11 +1145,11 @@
             return subscription;
         }
 
-        public static IResourceGroup SelectOrCreateResourceGroup(IAzure azure) {
+        public static IResourceGroup SelectOrCreateResourceGroup(IAzure azure, string resourceGroupDefaultName = null) {
             Console.WriteLine("Do you want to create a new ResourceGroup or use an existing one ? " +
                 "Please select N[new] or E[existing]");
 
-            ConsoleKey response = ConsoleKey.Escape;
+            var response = ConsoleKey.Escape;
             while (!ConsoleKey.N.Equals(response) && !ConsoleKey.E.Equals(response)) {
                 response = Console.ReadKey(false).Key;
 
@@ -772,7 +1163,7 @@
             if (ConsoleKey.E.Equals(response)) {
                 resourceGroup = SelectExistingResourceGroup(azure);
             } else {
-                resourceGroup = CreateNewResourceGroup(azure);
+                resourceGroup = CreateNewResourceGroup(azure, resourceGroupDefaultName);
             }
 
             return resourceGroup;
@@ -793,8 +1184,8 @@
             return resourceGroups.ElementAt(selection);
         }
 
-        public static IResourceGroup CreateNewResourceGroup(IAzure azure) {
-            Console.WriteLine("Please select region where resource group will be lovated.");
+        public static IResourceGroup CreateNewResourceGroup(IAzure azure, string resourceGroupDefaultName = null) {
+            Console.WriteLine("Please select region where resource group will be created.");
             Console.WriteLine();
 
             Console.WriteLine("Available regions:");
@@ -807,8 +1198,17 @@
             var regionSelection = ReadIndex(_functionalRegions.Length, "Select a region: ");
             var region = _functionalRegions[regionSelection];
 
-            Console.WriteLine("Select resource group name:");
+            if (string.IsNullOrEmpty(resourceGroupDefaultName)) {
+                Console.WriteLine("Select resource group name:");
+            }
+            else {
+                Console.WriteLine("Select resource group name, press Enter to use '{0}':", resourceGroupDefaultName);
+            }
+
             var resourceGroupName = Console.ReadLine();
+            if (string.IsNullOrEmpty(resourceGroupName)) {
+                resourceGroupName = resourceGroupDefaultName;
+            }
 
             // ToDo: Handle the case where resource group already exists.
             var resourceGroup = azure.ResourceGroups

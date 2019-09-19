@@ -36,6 +36,15 @@ namespace IAI {
     using Microsoft.Azure.Management.EventHub.Fluent;
     using Microsoft.Azure.Management.EventHub.Fluent.Models;
 
+    using Microsoft.Azure.Management.OperationalInsights;
+    using Microsoft.Azure.Management.OperationalInsights.Models;
+    using Microsoft.Azure.Management.ApplicationInsights.Management;
+    using Microsoft.Azure.Management.ApplicationInsights.Management.Models;
+    using Microsoft.Azure.Management.AppService.Fluent.Models;
+    using Microsoft.Azure.Management.AppService.Fluent;
+    using Microsoft.Azure.Management.ContainerService.Fluent;
+    using Microsoft.Azure.Management.ContainerService.Fluent.Models;
+
     class Program {
 
         public static Region[] _functionalRegions = new Region[] {
@@ -162,7 +171,7 @@ namespace IAI {
             var clientsApplicationName = applicationName + "-clients";
 
             // KeyVault names
-            var keyVaultName = applicationName + "-KV";
+            var keyVaultName = SdkContext.RandomResourceName("keyvault-", 5);
 
             // Storage Account names
             var storageAccountName = SdkContext.RandomResourceName("storage", 12);
@@ -185,6 +194,16 @@ namespace IAI {
 
             var eventHubName = SdkContext.RandomResourceName("eventhub-", 5);
             var eventHubAuthorizationRuleName = SdkContext.RandomResourceName("iothubroutes-" + eventHubName, 5);
+
+            // Operational Insights workspace name.
+            var operationalInsightsWorkspaceName = SdkContext.RandomResourceName("workspace-", 5);
+
+            // Application Insights name.
+            var applicationInsightsName = SdkContext.RandomResourceName("appinsights-", 5);
+
+            // AppService Plan name
+            var appServicePlanName = SdkContext.RandomResourceName(applicationName + "-", 5);
+            var azureWebsiteName = applicationName;
 
 
 
@@ -604,7 +623,7 @@ namespace IAI {
                 .Result;
 
             // Grant admin consent for service application "user_impersonation" API permissions of client applicatoin
-            var clientApplicationOAuth2PermissionGrantRequest0 = new OAuth2PermissionGrant {
+            // ToDo: Most probably I do not need to provide the Id.
             var clientApplicationOAuth2PermissionGrantUserImpersonationRequest = new OAuth2PermissionGrant {
                 Id = Guid.NewGuid().ToString(),
                 ConsentType = "AllPrincipals",
@@ -615,7 +634,6 @@ namespace IAI {
                 ExpiryTime = DateTimeOffset.UtcNow.AddYears(2)
             };
 
-            var clientApplicationOAuth2PermissionGrant0 = graphServiceClient
             var clientApplicationOAuth2PermissionGrantUserImpersonation = graphServiceClient
                 .Oauth2PermissionGrants
                 .Request()
@@ -623,7 +641,7 @@ namespace IAI {
                 .Result;
 
             // Grant admin consent for Microsoft Graph "User.Read" API permissions of client applicatoin
-            var clientApplicationOAuth2PermissionGrantRequest1 = new OAuth2PermissionGrant {
+            // ToDo: Most probably I do not need to provide the Id.
             var clientApplicationOAuth2PermissionGrantUserReadRequest = new OAuth2PermissionGrant {
                 Id = Guid.NewGuid().ToString(),
                 ConsentType = "AllPrincipals",
@@ -634,7 +652,7 @@ namespace IAI {
                 ExpiryTime = DateTimeOffset.UtcNow.AddYears(2)
             };
 
-            var clientApplicationOAuth2PermissionGrant1 = graphServiceClient
+            var clientApplicationOAuth2PermissionGrantUserRead = graphServiceClient
                 .Oauth2PermissionGrants
                 .Request()
                 .AddAsync(clientApplicationOAuth2PermissionGrantUserReadRequest)
@@ -750,6 +768,16 @@ namespace IAI {
                 };
 
                 storageAccountCreateParameters.Validate();
+
+                var storageAccountNameCheck = storageManagementClient
+                    .StorageAccounts
+                    .CheckNameAvailabilityAsync(
+                        storageAccountName
+                    ).Result;
+
+                if(!storageAccountNameCheck.NameAvailable.Value) {
+                    Console.WriteLine("Error: Storage account name is not available: {0}", storageAccountName);
+                }
 
                 storageAccount = storageManagementClient
                     .StorageAccounts
@@ -919,6 +947,10 @@ namespace IAI {
                             FailoverPriority = 0,
                             IsZoneRedundant = false
                         }
+                    },
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
                     }
                 };
 
@@ -947,6 +979,10 @@ namespace IAI {
                     Sku = new Microsoft.Azure.Management.ServiceBus.Fluent.Models.Sku {
                         Name = "Standard",  // !!!!! Add selection
                         Tier = "Standard"  // !!!!! Add selection
+                    },
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
                     }
                 };
 
@@ -980,6 +1016,295 @@ namespace IAI {
             }
 
             // Create Azure Event Hub Namespace and Azure Event Hub
+            EHNamespaceInner eventHubNamespace;
+            string eventHubConnectionString;
+
+            EventhubInner eventHub;
+
+            using (var eventHubManagementClient = new EventHubManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                // Create Azure Event Hub Namespace
+                var eventHubNamespaceParameters = new EHNamespaceInner {
+                    Location = resourceGroup.RegionName,
+                    Sku = new Microsoft.Azure.Management.EventHub.Fluent.Models.Sku {
+                        Name = Microsoft.Azure.Management.EventHub.Fluent.Models.SkuName.Basic,  // !!!!! Add selection
+                        Tier = Microsoft.Azure.Management.EventHub.Fluent.Models.SkuTier.Basic,  // !!!!! Add selection
+                        Capacity = 1  // !!!!! Add selection
+                    },
+                    IsAutoInflateEnabled = false,
+                    MaximumThroughputUnits = 0,
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                eventHubNamespaceParameters.Validate();
+
+                eventHubNamespace = eventHubManagementClient
+                    .Namespaces
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        eventHubNamespaceName,
+                        eventHubNamespaceParameters
+                    ).Result;
+
+                var eventHubAccessKeys = eventHubManagementClient
+                    .Namespaces
+                    .ListKeysAsync(
+                        resourceGroup.Name,
+                        eventHubNamespaceName,
+                        eventHubNamespaceAuthorizationRuleName
+                    ).Result;
+
+                eventHubConnectionString = eventHubAccessKeys.PrimaryConnectionString;
+
+                // Create Azure Event Hub
+                var eventHubParameters = new EventhubInner {
+                    Location = resourceGroup.RegionName,
+                    MessageRetentionInDays = 1,
+                    PartitionCount = 2,
+                    Status = Microsoft.Azure.Management.EventHub.Fluent.Models.EntityStatus.Active,
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                eventHubParameters.Validate();
+
+                eventHub = eventHubManagementClient
+                    .EventHubs
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        eventHubNamespaceName,
+                        eventHubName,
+                        eventHubParameters
+                    ).Result;
+
+
+                // Create Azure Event Hub Authorization Rule
+                var eventHubAuthorizationRuleRights = new List<Microsoft.Azure.Management.EventHub.Fluent.Models.AccessRights> {
+                    Microsoft.Azure.Management.EventHub.Fluent.Models.AccessRights.Send
+                };
+
+                var eventHubAuthorizationRule = eventHubManagementClient
+                    .EventHubs
+                    .CreateOrUpdateAuthorizationRuleAsync(
+                        resourceGroup.Name,
+                        eventHubNamespaceName,
+                        eventHubName,
+                        eventHubAuthorizationRuleName,
+                        eventHubAuthorizationRuleRights
+                    ).Result;
+            }
+
+            // Create Operational Insights workspace.
+            var operationalInsightsRestClient = RestClient
+                .Configure()
+                .WithEnvironment(azureEnvironment)
+                .WithCredentials(azureCredentials)
+                //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
+                .Build();
+
+            var operationalInsightsRestClientRootHttpHandler = operationalInsightsRestClient.RootHttpHandler;
+            var operationalInsightsRestClientDelegatingHandlers = operationalInsightsRestClient.Handlers.ToArray();
+
+            using (var operationalInsightsManagementClient = new OperationalInsightsManagementClient(
+                azureCredentials,
+                operationalInsightsRestClientRootHttpHandler,
+                operationalInsightsRestClientDelegatingHandlers
+            ) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                // features -> searchVersion is not accesible through SDK and it is also not documented or specified in REST specs.
+                // "features": {
+                //     "searchVersion": 1
+                // }
+
+                var workspaceParameters = new Workspace() {
+                    Location = resourceGroup.RegionName,
+                    Sku = new Microsoft.Azure.Management.OperationalInsights.Models.Sku {
+                        Name = "PerGB2018"  // !!!!! Add selection.
+                    },
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                workspaceParameters.Validate();
+
+                var workspace = operationalInsightsManagementClient
+                    .Workspaces
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        operationalInsightsWorkspaceName,
+                        workspaceParameters
+                    ).Result;
+            }
+
+            // Create Application Insights components.
+            var applicationInsightsRestClient = RestClient
+                .Configure()
+                .WithEnvironment(azureEnvironment)
+                .WithCredentials(azureCredentials)
+                //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
+                .Build();
+
+            var applicationInsightsRestClientRootHttpHandler = applicationInsightsRestClient.RootHttpHandler;
+            var applicationInsightsRestClientDelegatingHandlers = applicationInsightsRestClient.Handlers.ToArray();
+
+            using (var applicationInsightsManagementClient = new ApplicationInsightsManagementClient(
+                azureCredentials,
+                applicationInsightsRestClientRootHttpHandler,
+                applicationInsightsRestClientDelegatingHandlers
+            ) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                var applicationInsightsComponentParameters = new ApplicationInsightsComponent() {
+                    Location = resourceGroup.RegionName,
+                    Kind = "web",
+                    ApplicationType = "web",
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                applicationInsightsComponentParameters.Validate();
+
+                var applicationInsightsComponent = applicationInsightsManagementClient
+                    .Components
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        applicationInsightsName,
+                        applicationInsightsComponentParameters
+                    ).Result;
+
+                var applicationInsightsComponentBillingFeaturesParameters = new ApplicationInsightsComponentBillingFeatures() {
+                    CurrentBillingFeatures = new List<string> { "Basic" },
+                    DataVolumeCap = new ApplicationInsightsComponentDataVolumeCap(100.0, 24, 90)  // ResetTime is get only, so not available through object initializers
+                };
+
+                var applicationInsightsComponentBillingFeatures = applicationInsightsManagementClient
+                    .ComponentCurrentBillingFeatures
+                    .UpdateAsync(
+                        resourceGroup.Name,
+                        applicationInsightsName,
+                        applicationInsightsComponentBillingFeaturesParameters
+                    ).Result;
+            }
+
+            // Create AppService Plan to host the Application Gateway Web App
+            var appServiceManager = new AppServiceManager(restClient, subscription.SubscriptionId, tenantId);
+
+            //var appServicePlanFluent = appServiceManager
+            //    .AppServicePlans
+            //    .Define(appServicePlanName)
+            //    .WithRegion(resourceGroup.Region)
+            //    .WithExistingResourceGroup(resourceGroup)
+            //    .WithPricingTier(PricingTier.StandardS1)
+            //    .WithOperatingSystem(Microsoft.Azure.Management.AppService.Fluent.OperatingSystem.Linux)
+            //    .WithCapacity(0)
+            //    .Create();
+
+            //var webSiteFluent = appServiceManager
+            //    .WebApps
+            //    .Define(azureWebsiteName)
+            //    .WithExistingLinuxPlan(appServicePlanFluent)
+            //    .WithExistingResourceGroup(resourceGroup);
+            //    ...
+
+            using (var webSiteManagementClient = new WebSiteManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                var appServicePlanParameters = new AppServicePlanInner {
+                    Location = resourceGroup.RegionName,
+                    Sku = new Microsoft.Azure.Management.AppService.Fluent.Models.SkuDescription {
+                        Name = "S1",
+                        Capacity = 0
+                    },
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                appServicePlanParameters.Validate();
+
+                var appServicePlan = webSiteManagementClient
+                    .AppServicePlans
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        appServicePlanName,
+                        appServicePlanParameters
+                    ).Result;
+
+                var webSiteParameters = new SiteInner {
+                    Location = resourceGroup.RegionName,
+                    Enabled = true,
+                    ClientAffinityEnabled = false,
+                    ServerFarmId = appServicePlan.Id,
+                    SiteConfig = new SiteConfig {
+                        AppSettings = new List<NameValuePair> {
+                            new NameValuePair{
+                                Name = "REMOTE_ENDPOINT",
+                                Value = ""  // !!!!! ToDo: Add connection string to ip address of VM ????? !!!!!
+                            },
+                            new NameValuePair{
+                                Name = "REMOTE_ENDPOINT_SSL_THUMBPRINT",
+                                Value = ""  // !!!!! ToDo: Add thumbprint of certificate that is on VM ????? !!!!!
+                            }
+                        },
+
+                        // Coming from Microsoft.Web/sites/config resource
+                        NumberOfWorkers = 1,
+                        RequestTracingEnabled = true,
+                        HttpLoggingEnabled = true,
+                        DetailedErrorLoggingEnabled = true,
+                        AlwaysOn = true,
+                        MinTlsVersion = SupportedTlsVersions.OneFullStopTwo
+                    },
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                webSiteParameters.Validate();
+
+                var webSite = webSiteManagementClient
+                    .WebApps
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        azureWebsiteName,
+                        webSiteParameters
+                    ).Result;
+
+                var siteSourceControlRequest = new SiteSourceControlInner() {
+                    Location = resourceGroup.RegionName,
+                    RepoUrl = "https://github.com/Azure/reverse-proxy-dotnet.git",
+                    Branch = "master",
+                    IsManualIntegration = true,
+                    Tags = new Dictionary<string, string> {
+                        { "owner", "kakostan@microsoft.com" },
+                        { "application", "omp" }
+                    }
+                };
+
+                siteSourceControlRequest.Validate();
+
+                var siteSourceControl = webSiteManagementClient
+                    .WebApps
+                    .CreateOrUpdateSourceControlAsync(
+                        resourceGroup.Name,
+                        azureWebsiteName,
+                        siteSourceControlRequest
+                    ).Result;
+            }
+
             //var tokenCredentials = new AzureAdTokenCredentials("microsoft.onmicrosoft.com", AzureEnvironments.AzureCloudEnvironment);
             //var tokenProvider = new AzureAdTokenProvider(tokenCredentials);
 

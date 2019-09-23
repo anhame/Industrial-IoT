@@ -44,6 +44,10 @@ namespace IAI {
     using Microsoft.Azure.Management.AppService.Fluent;
     using Microsoft.Azure.Management.ContainerService.Fluent;
     using Microsoft.Azure.Management.ContainerService.Fluent.Models;
+    using Microsoft.Azure.KeyVault;
+    using Microsoft.Azure.KeyVault.Models;
+    using Microsoft.Azure.Services.AppAuthentication;
+    using System.Text;
 
     class Program {
 
@@ -56,6 +60,8 @@ namespace IAI {
             Region.IndiaCentral,
             Region.AsiaSouthEast
         };
+
+        public static string APPLICATION_OMP = "omp";
 
         static void Main(string[] args) {
 
@@ -82,6 +88,10 @@ namespace IAI {
                 "https://management.azure.com/user_impersonation"
             };
 
+            var keyVaultScopes = new string[] {
+                "https://vault.azure.net/user_impersonation"
+            };
+
             var publicClientApplication = PublicClientApplicationBuilder
                 .Create(iaiClientID)
                 .WithAuthority(azureCloudInstance, tenantId)
@@ -94,6 +104,7 @@ namespace IAI {
                     .AcquireTokenInteractive(microsoftGraphScopes)
                     //.WithPrompt(Prompt.SelectAccount)
                     .WithExtraScopesToConsent(azureManagementScopes)
+                    .WithExtraScopesToConsent(keyVaultScopes)
                     .ExecuteAsync()
                     .Result;
 
@@ -103,13 +114,16 @@ namespace IAI {
             //var accounts = publicClientApplication.GetAccountsAsync().Result;
             //var account = SelectAccount(accounts);
 
-            //var managementToken = publicClientApplication.AcquireTokenSilent(azureManagementScopes, account);
             var azureManagementAuthenticatoinResult = publicClientApplication
                 .AcquireTokenSilent(azureManagementScopes, microsoftGraphAuthenticatoinResult.Account)
                 .ExecuteAsync()
                 .Result;
 
-            var provider = new StringTokenProvider(microsoftGraphAuthenticatoinResult.AccessToken, "Bearer");
+            var keyVaultAuthenticatoinResult = publicClientApplication
+                .AcquireTokenSilent(keyVaultScopes, microsoftGraphAuthenticatoinResult.Account)
+                .ExecuteAsync()
+                .Result;
+
 
             var microsoftGraphTokenCredentials = new TokenCredentials(
                 new StringTokenProvider(microsoftGraphAuthenticatoinResult.AccessToken, "Bearer"),
@@ -123,15 +137,20 @@ namespace IAI {
                 azureManagementAuthenticatoinResult.Account.Username
             );
 
-            var azureCredentials = new AzureCredentials(
-                //microsoftGraphTokenCredentials,
+            var keyVaultTokenCredentials = new TokenCredentials(
+                new StringTokenProvider(keyVaultAuthenticatoinResult.AccessToken, "Bearer"),
+                keyVaultAuthenticatoinResult.TenantId,
+                keyVaultAuthenticatoinResult.Account.Username
+            );
+
+
+             var azureCredentials = new AzureCredentials(
                 azureManagementTokenCredentials,
                 microsoftGraphTokenCredentials,
-                //microsoftGraphAuthenticatoinResult.TenantId,
                 tenantId,
                 azureEnvironment
             );
-
+            
             var authenticated = Azure
                 .Configure()
                 .Authenticate(azureCredentials);
@@ -147,7 +166,9 @@ namespace IAI {
             //////////////////////////////////////////////////////
 
             var subscription = SelectSubscription(authenticated);
-            var azure = authenticated.WithSubscription(subscription.SubscriptionId);
+
+            var azure = authenticated
+                .WithSubscription(subscription.SubscriptionId);
 
 
             //////////////////////////////////////////////////////
@@ -165,13 +186,27 @@ namespace IAI {
 
             var applicationName = GetApplicationName();
 
-            var resourceGroup = SelectOrCreateResourceGroup(azure, applicationName);
+            // Resource Group names
+            var resourceGroupName = applicationName;
+
+            var resourceGroup = SelectOrCreateResourceGroup(azure, resourceGroupName);
+
+            resourceGroupName = resourceGroup.Name;
+            var aksResourceGroupName = resourceGroupName + "-aks";
 
             var servicesApplicationName = applicationName + "-services";
             var clientsApplicationName = applicationName + "-clients";
 
             // KeyVault names
             var keyVaultName = SdkContext.RandomResourceName("keyvault-", 5);
+
+            const string webAppCN = "webapp.services.net";
+            const string webAppCertName = "webApp";
+            CertificateBundle webAppCert;
+
+            const string aksClusterCN = "aks.cluster.net";
+            const string aksClusterCertName = "aksCluster";
+            CertificateBundle aksClusterCert;
 
             // Storage Account names
             var storageAccountName = SdkContext.RandomResourceName("storage", 12);
@@ -205,6 +240,25 @@ namespace IAI {
             var appServicePlanName = SdkContext.RandomResourceName(applicationName + "-", 5);
             var azureWebsiteName = applicationName;
 
+            // AKS cluster name
+            var aksClusterName = SdkContext.RandomResourceName("aksCluster", 5);
+            var aksDnsPrefix = aksClusterName + "-dns";
+
+
+
+
+
+            var defaultTagsList = new List<string> {
+                azureManagementAuthenticatoinResult.Account.Username,
+                APPLICATION_OMP
+            };
+
+            var defaultTagsDict = new Dictionary<string, string> {
+                { "owner", azureManagementAuthenticatoinResult.Account.Username },
+                { "application", APPLICATION_OMP }
+            };
+
+
 
 
             //var authProvider = new InteractiveAuthenticationProvider(
@@ -236,31 +290,31 @@ namespace IAI {
             // Setup AppRoles for service application
             var serviceApplicationAppRoles = new List<AppRole>();
 
-            var serviceApplicationApproverRoleId = Guid.NewGuid();
+            var serviceApplicationApproverRoleIdGuid = Guid.NewGuid();
             serviceApplicationAppRoles.Add(new AppRole {
                 DisplayName = "Approver",
                 Value = "Sign",
                 Description = "Approvers have the ability to issue certificates.",
                 AllowedMemberTypes = new List<string> { "User" },
-                Id = serviceApplicationApproverRoleId
+                Id = serviceApplicationApproverRoleIdGuid
             });
 
-            var serviceApplicationWriterRoleId = Guid.NewGuid();
+            var serviceApplicationWriterRoleIdGuid = Guid.NewGuid();
             serviceApplicationAppRoles.Add(new AppRole {
                 DisplayName = "Writer",
                 Value = "Write",
                 Description = "Writers Have the ability to change entities.",
                 AllowedMemberTypes = new List<string> { "User" },
-                Id = serviceApplicationWriterRoleId
+                Id = serviceApplicationWriterRoleIdGuid
             });
 
-            var serviceApplicationAdministratorRoleId = Guid.NewGuid();
+            var serviceApplicationAdministratorRoleIdGuid = Guid.NewGuid();
             serviceApplicationAppRoles.Add(new AppRole {
                 DisplayName = "Administrator",
                 Value = "Admin",
                 Description = "Admins can access advanced features.",
                 AllowedMemberTypes = new List<string> { "User" },
-                Id = serviceApplicationAdministratorRoleId
+                Id = serviceApplicationAdministratorRoleIdGuid
             });
 
             // Setup RequiredResourceAccess for service application
@@ -313,13 +367,13 @@ namespace IAI {
             );
 
             // Add OAuth2Permissions
-            var serviceApplicatoinPermissionUserImpersonationId = Guid.NewGuid();
+            var serviceApplicatoinPermissionUserImpersonationIdGuid = Guid.NewGuid();
 
             var oauth2Permissions = new List<PermissionScope> {
                 new PermissionScope {
                     AdminConsentDescription = string.Format("Allow the app to access {0} on behalf of the signed-in user.", servicesApplicationName),
                     AdminConsentDisplayName = string.Format("Access {0}", servicesApplicationName),
-                    Id = serviceApplicatoinPermissionUserImpersonationId,
+                    Id = serviceApplicatoinPermissionUserImpersonationIdGuid,
                     IsEnabled = true,
                     Type = "User",
                     UserConsentDescription = string.Format("Allow the application to access {0} on your behalf.", servicesApplicationName),
@@ -358,10 +412,7 @@ namespace IAI {
                 DisplayName = servicesApplicationName,
                 IsFallbackPublicClient = false,
                 IdentifierUris = new List<string> { serviceApplicationIdentifierUri },
-                Tags = new List<string> {
-                    "kakostan@microsoft.com",
-                    "omp"
-                },
+                Tags = defaultTagsList,
                 SignInAudience = "AzureADMyOrg",
                 AppRoles = serviceApplicationAppRoles,
                 RequiredResourceAccess = serviceApplicationRequiredResourceAccess,
@@ -394,11 +445,7 @@ namespace IAI {
                 var serviceApplicationServicePrincipalRequest = new ServicePrincipal {
                     DisplayName = servicesApplicationName,
                     AppId = serviceApplication.AppId,
-                    Tags = new List<string> {
-                        "kakostan@microsoft.com",
-                        "omp"
-                        //WindowsAzureActiveDirectoryIntegratedApp
-                    }
+                    Tags = defaultTagsList // Add WindowsAzureActiveDirectoryIntegratedApp
                 };
 
                 serviceApplicationServicePrincipal = graphServiceClient
@@ -439,8 +486,8 @@ namespace IAI {
                 PrincipalId = new Guid(me.Id),
                 ResourceId = new Guid(serviceApplicationServicePrincipal.Id),
                 ResourceDisplayName = "Approver",
-                Id = serviceApplicationApproverRoleId.ToString(),
-                AppRoleId = serviceApplicationApproverRoleId
+                Id = serviceApplicationApproverRoleIdGuid.ToString(),
+                AppRoleId = serviceApplicationApproverRoleIdGuid
             };
 
             var writerAppRoleAssignmentRequest = new AppRoleAssignment {
@@ -449,8 +496,8 @@ namespace IAI {
                 PrincipalId = new Guid(me.Id),
                 ResourceId = new Guid(serviceApplicationServicePrincipal.Id),
                 ResourceDisplayName = "Writer",
-                Id = serviceApplicationWriterRoleId.ToString(),
-                AppRoleId = serviceApplicationWriterRoleId
+                Id = serviceApplicationWriterRoleIdGuid.ToString(),
+                AppRoleId = serviceApplicationWriterRoleIdGuid
             };
 
             var adminAppRoleAssignmentRequest = new AppRoleAssignment {
@@ -459,8 +506,8 @@ namespace IAI {
                 PrincipalId = new Guid(me.Id),
                 ResourceId = new Guid(serviceApplicationServicePrincipal.Id),
                 ResourceDisplayName = "Admin",
-                Id = serviceApplicationAdministratorRoleId.ToString(),
-                AppRoleId = serviceApplicationAdministratorRoleId
+                Id = serviceApplicationAdministratorRoleIdGuid.ToString(),
+                AppRoleId = serviceApplicationAdministratorRoleIdGuid
             };
 
             //// !!!!! AddAsync() is not defined !!!!!
@@ -487,7 +534,7 @@ namespace IAI {
                     ResourceAppId = serviceApplication.AppId,  // service application
                     ResourceAccess = new List<ResourceAccess> {
                         new ResourceAccess {
-                            Id = serviceApplicatoinPermissionUserImpersonationId,  // "user_impersonation"
+                            Id = serviceApplicatoinPermissionUserImpersonationIdGuid,  // "user_impersonation"
                             Type = "Scope"
                         }
                     }
@@ -537,10 +584,7 @@ namespace IAI {
             var clientApplicationRequest = new Application {
                 DisplayName = clientsApplicationName,
                 IsFallbackPublicClient = true,
-                Tags = new List<string> {
-                    "kakostan@microsoft.com",
-                    "omp"
-                },
+                Tags = defaultTagsList,
                 SignInAudience = "AzureADMyOrg",
                 RequiredResourceAccess = clientApplicationRequiredResourceAccess,
                 PublicClient = clientApplicationPublicClientApplication,
@@ -571,11 +615,7 @@ namespace IAI {
                 var clientApplicationServicePrincipalRequest = new ServicePrincipal {
                     DisplayName = clientsApplicationName,
                     AppId = clientApplication.AppId,
-                    Tags = new List<string> {
-                        "kakostan@microsoft.com",
-                        "omp"
-                        //WindowsAzureActiveDirectoryIntegratedApp
-                    }
+                    Tags = defaultTagsList // add WindowsAzureActiveDirectoryIntegratedApp
                 };
 
                 clientApplicationServicePrincipal = graphServiceClient
@@ -660,8 +700,7 @@ namespace IAI {
 
 
 
-
-            // Create Azure KeyVault
+            // Create generic RestClient for services
             var restClient = RestClient
                 .Configure()
                 .WithEnvironment(azureEnvironment)
@@ -669,8 +708,8 @@ namespace IAI {
                 //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
                 .Build();
 
-            //var restClientRootHttpHandler = restClient.RootHttpHandler;
-            //var restClientDelegatingHandlers = restClient.Handlers.ToArray();
+            // Create Azure KeyVault
+            VaultInner keyVault;
 
             using (var keyVaultManagementClient = new KeyVaultManagementClient(restClient) {
                 SubscriptionId = subscription.SubscriptionId
@@ -700,10 +739,8 @@ namespace IAI {
 
                 var keyVaultCreateOrUpdateParametersInner = new VaultCreateOrUpdateParametersInner {
                     Location = resourceGroup.RegionName,
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
-                    },
+                    Tags = defaultTagsDict,
+
                     Properties = new VaultProperties {
                         EnabledForDeployment = false,
                         EnabledForTemplateDeployment = false,
@@ -719,14 +756,109 @@ namespace IAI {
 
                 keyVaultCreateOrUpdateParametersInner.Validate();
 
-                keyVaultManagementClient
+                keyVault = keyVaultManagementClient
                     .Vaults
-                    .CreateOrUpdateWithHttpMessagesAsync(
+                    .CreateOrUpdateAsync(
                         resourceGroup.Name,
                         keyVaultName,
                         keyVaultCreateOrUpdateParametersInner
                     )
-                    .Wait();
+                    .Result;
+            }
+
+            // Add certificates to KeyVault
+            var authenticationCallback = new KeyVaultClient.AuthenticationCallback(
+                async (authority, resource, scope) => {
+                    // ToDo: Fetch from cache.
+                    return keyVaultAuthenticatoinResult.AccessToken;
+                }
+            );
+
+            using (var keyVaultClient = new KeyVaultClient(authenticationCallback)) {
+                var certificatePolicy = new CertificatePolicy {
+                    KeyProperties = new KeyProperties {
+                        Exportable = true,
+                        KeyType = "RSA",
+                        KeySize = 2048,
+                        ReuseKey = false
+                    },
+                    SecretProperties = new SecretProperties {
+                        ContentType = "application/x-pkcs12"
+                    },
+                    X509CertificateProperties = new X509CertificateProperties {
+                        Subject = $"CN={webAppCN}",
+                        SubjectAlternativeNames = new SubjectAlternativeNames {
+                            DnsNames = new string[] {
+                                webAppCN
+                            }
+                        }
+                    },
+                    IssuerParameters = new IssuerParameters {
+                        Name = "Self"
+                    }
+
+                };
+
+                certificatePolicy.Validate();
+
+                var certificateAttributes = new CertificateAttributes {
+                };
+
+                var webAppCertificateOperation = keyVaultClient
+                    .CreateCertificateAsync(
+                        keyVault.Properties.VaultUri,
+                        webAppCertName,
+                        certificatePolicy,
+                        certificateAttributes
+                    )
+                    .Result;
+
+                while (webAppCertificateOperation.Status.ToLower().Equals("inprogress")) {
+                    Task.Delay(1000).Wait();
+
+                    webAppCertificateOperation = keyVaultClient
+                        .GetCertificateOperationAsync(
+                            keyVault.Properties.VaultUri,
+                            webAppCertName
+                        )
+                        .Result;
+                }
+
+                webAppCert = keyVaultClient
+                    .GetCertificateAsync(
+                        keyVault.Properties.VaultUri,
+                        webAppCertName
+                    ).Result;
+
+                // Create certificate for AKS cluster
+                certificatePolicy.X509CertificateProperties.Subject = $"CN={aksClusterCN}";
+                certificatePolicy.X509CertificateProperties.SubjectAlternativeNames.DnsNames[0] = aksClusterCN;
+
+                var aksClusterCertificateOperation = keyVaultClient
+                    .CreateCertificateAsync(
+                        keyVault.Properties.VaultUri,
+                        aksClusterCertName,
+                        certificatePolicy,
+                        certificateAttributes
+                    )
+                    .Result;
+
+                while (aksClusterCertificateOperation.Status.ToLower().Equals("inprogress")) {
+                    Task.Delay(1000).Wait();
+
+                    aksClusterCertificateOperation = keyVaultClient
+                        .GetCertificateOperationAsync(
+                            keyVault.Properties.VaultUri,
+                            aksClusterCertName
+                        )
+                        .Result;
+                }
+
+                aksClusterCert = keyVaultClient
+                    .GetCertificateAsync(
+                        keyVault.Properties.VaultUri,
+                        aksClusterCertName
+                    ).Result;
             }
 
             // Create Storage Account
@@ -737,8 +869,10 @@ namespace IAI {
             using (var storageManagementClient = new StorageManagementClient(restClient) {
                 SubscriptionId = subscription.SubscriptionId
             }) {
-                var storageAccountCreateParameters = new StorageAccountCreateParameters {
+                var storageAccountCreateParameters = new Microsoft.Azure.Management.Storage.Fluent.Models.StorageAccountCreateParameters {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Kind = Kind.Storage,
                     Sku = new SkuInner {
                         Name = Microsoft.Azure.Management.Storage.Fluent.Models.SkuName.StandardLRS  // !!!!!
@@ -760,10 +894,6 @@ namespace IAI {
                             }
                         },
                         KeySource = KeySource.MicrosoftStorage
-                    },
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
                     }
                 };
 
@@ -818,114 +948,117 @@ namespace IAI {
                 //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
                 .Build();
 
-            var iotHubRestClientRootHttpHandler = iotHubRestClient.RootHttpHandler;
-            var iotHubRestClientDelegatingHandlers = iotHubRestClient.Handlers.ToArray();
+            IotHubDescription iotHubDescription;
+            EventHubConsumerGroupInfo eventHubConsumerGroupInfo;
 
-            var iotHubClient = new IotHubClient(azureCredentials, iotHubRestClientRootHttpHandler, iotHubRestClientDelegatingHandlers) {
+            using (var iotHubClient = new IotHubClient(
+                azureCredentials,
+                iotHubRestClient.RootHttpHandler,
+                iotHubRestClient.Handlers.ToArray()
+            ) {
                 SubscriptionId = subscription.SubscriptionId
-            };
+            }) {
+                var iotHubSkuInfo = new IotHubSkuInfo(
+                    "S1",  // !!!!! ToDo: Add selection.
+                    IotHubSkuTier.Standard,  // !!!!! ToDo: Add selection.
+                    1  // !!!!! ToDo: Add selection.
+                );
 
-            var iotHubSkuInfo = new IotHubSkuInfo(
-                "S1",  // !!!!! ToDo: Add selection.
-                IotHubSkuTier.Standard,  // !!!!! ToDo: Add selection.
-                1  // !!!!! ToDo: Add selection.
-            );
-            iotHubSkuInfo.Validate();
+                iotHubSkuInfo.Validate();
 
-            var iotHubProperties = new IotHubProperties {
-                IpFilterRules = new List<IpFilterRule>(),
-                EnableFileUploadNotifications = true,
-                Features = "None",
-                EventHubEndpoints = new Dictionary<string, EventHubProperties> {
-                    { "events", new EventHubProperties {
-                            RetentionTimeInDays = 1,
-                            PartitionCount = 4 // !!!!!
+                var iotHubProperties = new IotHubProperties {
+                    IpFilterRules = new List<IpFilterRule>(),
+                    EnableFileUploadNotifications = true,
+                    Features = "None",
+                    EventHubEndpoints = new Dictionary<string, EventHubProperties> {
+                        { "events", new EventHubProperties {
+                                RetentionTimeInDays = 1,
+                                PartitionCount = 4 // !!!!!
+                            }
+                        },
+                        { "operationsMonitoringEvents", new EventHubProperties {
+                                RetentionTimeInDays = 1,
+                                PartitionCount = 4 // !!!!!
+                            }
                         }
                     },
-                    { "operationsMonitoringEvents", new EventHubProperties {
-                            RetentionTimeInDays = 1,
-                            PartitionCount = 4 // !!!!!
+                    Routing = new RoutingProperties {
+                        Endpoints = new RoutingEndpoints {
+                            ServiceBusQueues = null,
+                            ServiceBusTopics = null,
+                            EventHubs = null,
+                            StorageContainers = null
+                        },
+                        Routes = null,
+                        FallbackRoute = new FallbackRouteProperties {
+                            Name = "$fallback",
+                            //Source = "DeviceMessages",  // Seem to be set by FallbackRouteProperties constructor.
+                            Condition = "true",
+                            IsEnabled = true,
+                            EndpointNames = new List<string> { "events" }
                         }
-                    }
-                },
-                Routing = new RoutingProperties {
-                    Endpoints = new RoutingEndpoints {
-                        ServiceBusQueues = null,
-                        ServiceBusTopics = null,
-                        EventHubs = null,
-                        StorageContainers = null
                     },
-                    Routes = null,
-                    FallbackRoute = new FallbackRouteProperties {
-                        Name = "$fallback",
-                        //Source = "DeviceMessages",  // Seem to be set by FallbackRouteProperties constructor.
-                        Condition = "true",
-                        IsEnabled = true,
-                        EndpointNames = new List<string> { "events" }
-                    }
-                },
-                StorageEndpoints = new Dictionary<string, StorageEndpointProperties> {
-                    { "$default", new StorageEndpointProperties {
-                            SasTtlAsIso8601 = TimeSpan.FromHours(1),
-                            ConnectionString = storageAccountConectionString,
-                            ContainerName = iotHubStorageContainerName
+                    StorageEndpoints = new Dictionary<string, StorageEndpointProperties> {
+                        { "$default", new StorageEndpointProperties {
+                                SasTtlAsIso8601 = TimeSpan.FromHours(1),
+                                ConnectionString = storageAccountConectionString,
+                                ContainerName = iotHubStorageContainerName
+                            }
                         }
-                    }
-                },
-                MessagingEndpoints = new Dictionary<string, MessagingEndpointProperties> {
-                    { "fileNotifications", new MessagingEndpointProperties {
+                    },
+                    MessagingEndpoints = new Dictionary<string, MessagingEndpointProperties> {
+                        { "fileNotifications", new MessagingEndpointProperties {
+                                LockDurationAsIso8601 = TimeSpan.FromMinutes(1),
+                                TtlAsIso8601 = TimeSpan.FromHours(1),
+                                MaxDeliveryCount = 10
+                            }
+                        }
+                    },
+                    CloudToDevice = new CloudToDeviceProperties {
+                        MaxDeliveryCount = 10,
+                        DefaultTtlAsIso8601 = TimeSpan.FromHours(1),
+                        Feedback = new FeedbackProperties {
                             LockDurationAsIso8601 = TimeSpan.FromMinutes(1),
                             TtlAsIso8601 = TimeSpan.FromHours(1),
                             MaxDeliveryCount = 10
                         }
                     }
-                },
-                CloudToDevice = new CloudToDeviceProperties {
-                    MaxDeliveryCount = 10,
-                    DefaultTtlAsIso8601 = TimeSpan.FromHours(1),
-                    Feedback = new FeedbackProperties {
-                        LockDurationAsIso8601 = TimeSpan.FromMinutes(1),
-                        TtlAsIso8601 = TimeSpan.FromHours(1),
-                        MaxDeliveryCount = 10
-                    }
-                }
-            };
+                };
 
-            iotHubProperties.Validate();
+                iotHubProperties.Validate();
 
-            var iotHubDescriptionRequest = new IotHubDescription(
-                resourceGroup.RegionName,
-                iotHubSkuInfo,
-                Guid.NewGuid().ToString(),
-                iotHubName,
-                "Microsoft.Devices/Iothubs",
-                new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
-                },
-                null,
-                iotHubProperties
-            );
-
-            iotHubDescriptionRequest.Validate();
-
-            var iotHubDescription = iotHubClient
-                .IotHubResource
-                .CreateOrUpdate(
-                    resourceGroup.Name,
+                var iotHubDescriptionRequest = new IotHubDescription(
+                    resourceGroup.RegionName,
+                    iotHubSkuInfo,
+                    Guid.NewGuid().ToString(),
                     iotHubName,
-                    iotHubDescriptionRequest
+                    "Microsoft.Devices/Iothubs",
+                    defaultTagsDict,
+                    null,
+                    iotHubProperties
                 );
 
-            var eventHubConsumerGroupInfo = iotHubClient
-                .IotHubResource
-                .CreateEventHubConsumerGroup(
-                    resourceGroup.Name,
-                    iotHubName,
-                    "events",
-                    iotHubOnboardingConsumerGroupName
-                );
+                iotHubDescriptionRequest.Validate();
 
+                iotHubDescription = iotHubClient
+                    .IotHubResource
+                    .CreateOrUpdate(
+                        resourceGroup.Name,
+                        iotHubName,
+                        iotHubDescriptionRequest
+                    );
+
+                eventHubConsumerGroupInfo = iotHubClient
+                    .IotHubResource
+                    .CreateEventHubConsumerGroup(
+                        resourceGroup.Name,
+                        iotHubName,
+                        "events",
+                        iotHubOnboardingConsumerGroupName
+                    );
+            }
+
+            
             // Create CosmosDB
             DatabaseAccountInner cosmosDBAccount;
 
@@ -934,6 +1067,8 @@ namespace IAI {
             }) {
                 var databaseAccountParameters = new DatabaseAccountCreateUpdateParametersInner {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     //DatabaseAccountOfferType = "Standard",
                     Kind = "GlobalDocumentDB",
                     ConsistencyPolicy = new ConsistencyPolicy {
@@ -947,10 +1082,6 @@ namespace IAI {
                             FailoverPriority = 0,
                             IsZoneRedundant = false
                         }
-                    },
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
                     }
                 };
 
@@ -976,13 +1107,11 @@ namespace IAI {
             }) {
                 var namespaceModel = new NamespaceModelInner {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Sku = new Microsoft.Azure.Management.ServiceBus.Fluent.Models.Sku {
                         Name = "Standard",  // !!!!! Add selection
                         Tier = "Standard"  // !!!!! Add selection
-                    },
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
                     }
                 };
 
@@ -1027,17 +1156,15 @@ namespace IAI {
                 // Create Azure Event Hub Namespace
                 var eventHubNamespaceParameters = new EHNamespaceInner {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Sku = new Microsoft.Azure.Management.EventHub.Fluent.Models.Sku {
                         Name = Microsoft.Azure.Management.EventHub.Fluent.Models.SkuName.Basic,  // !!!!! Add selection
                         Tier = Microsoft.Azure.Management.EventHub.Fluent.Models.SkuTier.Basic,  // !!!!! Add selection
                         Capacity = 1  // !!!!! Add selection
                     },
                     IsAutoInflateEnabled = false,
-                    MaximumThroughputUnits = 0,
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
-                    }
+                    MaximumThroughputUnits = 0
                 };
 
                 eventHubNamespaceParameters.Validate();
@@ -1063,13 +1190,11 @@ namespace IAI {
                 // Create Azure Event Hub
                 var eventHubParameters = new EventhubInner {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     MessageRetentionInDays = 1,
                     PartitionCount = 2,
-                    Status = Microsoft.Azure.Management.EventHub.Fluent.Models.EntityStatus.Active,
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
-                    }
+                    Status = Microsoft.Azure.Management.EventHub.Fluent.Models.EntityStatus.Active
                 };
 
                 eventHubParameters.Validate();
@@ -1101,6 +1226,8 @@ namespace IAI {
             }
 
             // Create Operational Insights workspace.
+            Workspace operationalInsightsWorkspace;
+
             var operationalInsightsRestClient = RestClient
                 .Configure()
                 .WithEnvironment(azureEnvironment)
@@ -1108,13 +1235,10 @@ namespace IAI {
                 //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
                 .Build();
 
-            var operationalInsightsRestClientRootHttpHandler = operationalInsightsRestClient.RootHttpHandler;
-            var operationalInsightsRestClientDelegatingHandlers = operationalInsightsRestClient.Handlers.ToArray();
-
             using (var operationalInsightsManagementClient = new OperationalInsightsManagementClient(
                 azureCredentials,
-                operationalInsightsRestClientRootHttpHandler,
-                operationalInsightsRestClientDelegatingHandlers
+                operationalInsightsRestClient.RootHttpHandler,
+                operationalInsightsRestClient.Handlers.ToArray()
             ) {
                 SubscriptionId = subscription.SubscriptionId
             }) {
@@ -1123,20 +1247,18 @@ namespace IAI {
                 //     "searchVersion": 1
                 // }
 
-                var workspaceParameters = new Workspace() {
+                var workspaceParameters = new Workspace {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Sku = new Microsoft.Azure.Management.OperationalInsights.Models.Sku {
                         Name = "PerGB2018"  // !!!!! Add selection.
-                    },
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
                     }
                 };
 
                 workspaceParameters.Validate();
 
-                var workspace = operationalInsightsManagementClient
+                operationalInsightsWorkspace = operationalInsightsManagementClient
                     .Workspaces
                     .CreateOrUpdateAsync(
                         resourceGroup.Name,
@@ -1153,24 +1275,19 @@ namespace IAI {
                 //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
                 .Build();
 
-            var applicationInsightsRestClientRootHttpHandler = applicationInsightsRestClient.RootHttpHandler;
-            var applicationInsightsRestClientDelegatingHandlers = applicationInsightsRestClient.Handlers.ToArray();
-
             using (var applicationInsightsManagementClient = new ApplicationInsightsManagementClient(
                 azureCredentials,
-                applicationInsightsRestClientRootHttpHandler,
-                applicationInsightsRestClientDelegatingHandlers
+                applicationInsightsRestClient.RootHttpHandler,
+                applicationInsightsRestClient.Handlers.ToArray()
             ) {
                 SubscriptionId = subscription.SubscriptionId
             }) {
                 var applicationInsightsComponentParameters = new ApplicationInsightsComponent() {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Kind = "web",
-                    ApplicationType = "web",
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
-                    }
+                    ApplicationType = "web"
                 };
 
                 applicationInsightsComponentParameters.Validate();
@@ -1222,13 +1339,11 @@ namespace IAI {
             }) {
                 var appServicePlanParameters = new AppServicePlanInner {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Sku = new Microsoft.Azure.Management.AppService.Fluent.Models.SkuDescription {
                         Name = "S1",
                         Capacity = 0
-                    },
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
                     }
                 };
 
@@ -1244,6 +1359,8 @@ namespace IAI {
 
                 var webSiteParameters = new SiteInner {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     Enabled = true,
                     ClientAffinityEnabled = false,
                     ServerFarmId = appServicePlan.Id,
@@ -1255,7 +1372,7 @@ namespace IAI {
                             },
                             new NameValuePair{
                                 Name = "REMOTE_ENDPOINT_SSL_THUMBPRINT",
-                                Value = ""  // !!!!! ToDo: Add thumbprint of certificate that is on VM ????? !!!!!
+                                Value = Encoding.Unicode.GetString(webAppCert.X509Thumbprint, 0, webAppCert.X509Thumbprint.Length),  // !!!!! ToDo: Add cert to VM !!!!!
                             }
                         },
 
@@ -1266,10 +1383,6 @@ namespace IAI {
                         DetailedErrorLoggingEnabled = true,
                         AlwaysOn = true,
                         MinTlsVersion = SupportedTlsVersions.OneFullStopTwo
-                    },
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
                     }
                 };
 
@@ -1285,13 +1398,11 @@ namespace IAI {
 
                 var siteSourceControlRequest = new SiteSourceControlInner() {
                     Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
                     RepoUrl = "https://github.com/Azure/reverse-proxy-dotnet.git",
                     Branch = "master",
-                    IsManualIntegration = true,
-                    Tags = new Dictionary<string, string> {
-                        { "owner", "kakostan@microsoft.com" },
-                        { "application", "omp" }
-                    }
+                    IsManualIntegration = true
                 };
 
                 siteSourceControlRequest.Validate();
@@ -1535,7 +1646,15 @@ namespace IAI {
                 resourceGroupName = resourceGroupDefaultName;
             }
 
-            // ToDo: Handle the case where resource group already exists.
+            var resourceGroupAlreadyExists = azure
+                .ResourceGroups
+                .ContainAsync(resourceGroupName)
+                .Result;
+
+            if (resourceGroupAlreadyExists) {
+                throw new System.Exception($"Resource group with name \"{resourceGroupName}\" already exists.");
+            }
+
             var resourceGroup = azure.ResourceGroups
                 .Define(resourceGroupName)
                 .WithRegion(region)
@@ -1543,7 +1662,8 @@ namespace IAI {
                     { "owner", "kakostan@microsoft.com" },
                     { "application", "omp" }
                 })
-                .Create();
+                .CreateAsync()
+                .Result;
 
             return resourceGroup;
         }
@@ -1690,6 +1810,20 @@ namespace IAI {
             }
 
             return clientApplicationServicePrincipals.First();
+        }
+
+        public static string GeneratePassword(int length) {
+            // ToDo: Make it cryptographically sound at some point.
+            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+            var random = new Random();
+            var password = new string(Enumerable
+                .Repeat(chars, length)
+                .Select(s => s[random.Next(s.Length)])
+                .ToArray()
+            );
+
+            return password;
         }
     }
 }

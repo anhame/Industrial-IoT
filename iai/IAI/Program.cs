@@ -441,17 +441,18 @@ namespace IAI {
             ServicePrincipal serviceApplicationServicePrincipal;
 
             if (serviceApplicationServicePrincipals.Count == 0) {
-                // Create new service principal
-                var serviceApplicationServicePrincipalRequest = new ServicePrincipal {
+                // Define new service principal
+                var serviceApplicationServicePrincipalDefinition = new ServicePrincipal {
                     DisplayName = servicesApplicationName,
                     AppId = serviceApplication.AppId,
                     Tags = defaultTagsList // Add WindowsAzureActiveDirectoryIntegratedApp
                 };
 
+                // Create new service principal
                 serviceApplicationServicePrincipal = graphServiceClient
                     .ServicePrincipals
                     .Request()
-                    .AddAsync(serviceApplicationServicePrincipalRequest)
+                    .AddAsync(serviceApplicationServicePrincipalDefinition)
                     .Result;
             } else {
                 serviceApplicationServicePrincipal = serviceApplicationServicePrincipals.First();
@@ -611,17 +612,18 @@ namespace IAI {
             ServicePrincipal clientApplicationServicePrincipal;
 
             if (clientApplicationServicePrincipals.Count == 0) {
-                // Create new client principal
-                var clientApplicationServicePrincipalRequest = new ServicePrincipal {
+                // Define new client principal
+                var clientApplicationServicePrincipalDefinition = new ServicePrincipal {
                     DisplayName = clientsApplicationName,
                     AppId = clientApplication.AppId,
                     Tags = defaultTagsList // add WindowsAzureActiveDirectoryIntegratedApp
                 };
 
+                // Create new client principal
                 clientApplicationServicePrincipal = graphServiceClient
                     .ServicePrincipals
                     .Request()
-                    .AddAsync(clientApplicationServicePrincipalRequest)
+                    .AddAsync(clientApplicationServicePrincipalDefinition)
                     .Result;
             } else {
                 clientApplicationServicePrincipal = clientApplicationServicePrincipals.First();
@@ -708,6 +710,8 @@ namespace IAI {
                 //.WithLogLevel(HttpLoggingDelegatingHandler.Level.BodyAndHeaders)
                 .Build();
 
+
+
             // Create Azure KeyVault
             VaultInner keyVault;
 
@@ -770,7 +774,7 @@ namespace IAI {
             var authenticationCallback = new KeyVaultClient.AuthenticationCallback(
                 async (authority, resource, scope) => {
                     // ToDo: Fetch from cache.
-                    return keyVaultAuthenticatoinResult.AccessToken;
+                    return await Task.FromResult(keyVaultAuthenticatoinResult.AccessToken);
                 }
             );
 

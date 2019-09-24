@@ -7,7 +7,7 @@
     <Authors>Microsoft</Authors>
     <Company>Microsoft</Company>
     <Copyright>© Microsoft Corporation.</Copyright>
-    <PackageIconUrl>http://go.microsoft.com/fwlink/?LinkID=288890</PackageIconUrl>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageReleaseNotes>$(RepositoryUrl)/releases</PackageReleaseNotes>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
@@ -15,8 +15,11 @@
     <HighEntropyVA>true</HighEntropyVA>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NeutralLanguage>en-US</NeutralLanguage>
-    <LangVersion>7.3</LangVersion>
+    <LangVersion>8.0</LangVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)/icon.png" Pack="true" PackagePath="\"/>
+  </ItemGroup>  
   <ItemGroup>
     <None Remove="mcr.json" />
   </ItemGroup>

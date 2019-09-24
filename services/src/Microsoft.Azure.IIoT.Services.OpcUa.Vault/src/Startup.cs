@@ -31,6 +31,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
     using Microsoft.Azure.IIoT.Diagnostics;
     using Microsoft.Azure.KeyVault;
     using Microsoft.Azure.Services.AppAuthentication;
+    using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
@@ -63,7 +64,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
         /// <summary>
         /// Current hosting environment - Initialized in constructor
         /// </summary>
-        public IHostingEnvironment Environment { get; }
+        public IWebHostEnvironment Environment { get; }
 
         /// <summary>
         /// Di container - Initialized in `ConfigureServices`
@@ -75,7 +76,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
         /// </summary>
         /// <param name="env"></param>
         /// <param name="configuration"></param>
-        public Startup(IHostingEnvironment env, IConfiguration configuration) {
+        public Startup(IWebHostEnvironment env, IConfiguration configuration) {
             if (configuration == null) {
                 throw new ArgumentNullException(nameof(configuration));
             }
@@ -152,10 +153,9 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
             });
 
             // Add controllers as services so they'll be resolved.
-            services.AddMvc()
+            services.AddControllers()
                 .AddApplicationPart(GetType().Assembly)
-                .AddControllersAsServices()
-                .AddJsonOptions(options => {
+                .AddNewtonsoftJson(options => {
                     options.SerializerSettings.Formatting = Formatting.Indented;
                     options.SerializerSettings.Converters.Add(new ExceptionConverter(
                         Environment.IsDevelopment()));
@@ -169,6 +169,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
                 Version = VersionInfo.PATH,
                 Description = ServiceInfo.Description,
             });
+            services.AddHealthChecks();
 
             // Prepare DI container
             var builder = new ContainerBuilder();
@@ -185,9 +186,12 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
         /// </summary>
         /// <param name="app"></param>
         /// <param name="appLifetime"></param>
-        public void Configure(IApplicationBuilder app, IApplicationLifetime appLifetime) {
+        public void Configure(IApplicationBuilder app, IHostApplicationLifetime appLifetime) {
 
             var log = ApplicationContainer.Resolve<ILogger>();
+
+            app.UseRouting();
+            app.EnableCors();
 
             if (Config.AuthRequired) {
                 app.UseAuthentication();
@@ -197,15 +201,16 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
                 app.UseHttpsRedirection();
             }
 
-            app.EnableCors();
-
             app.UseSwagger(Config, new Info {
                 Title = ServiceInfo.Name,
                 Version = VersionInfo.PATH,
                 Description = ServiceInfo.Description,
             });
 
-            app.UseMvc();
+            app.UseEndpoints(endpoints => {
+                endpoints.MapHealthChecks("/health");
+                endpoints.MapControllers();
+            });
 
             // If you want to dispose of resources that have been resolved in the
             // application container, register for the "ApplicationStopped" event.

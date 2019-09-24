@@ -20,6 +20,8 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
     using Microsoft.Azure.IIoT.Module.Default;
     using Microsoft.Azure.IIoT.Hub.Client;
     using Microsoft.Azure.IIoT.Auth.Server.Default;
+    using Microsoft.Azure.IIoT.Diagnostics;
+    using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
@@ -31,7 +33,6 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
     using System;
     using ILogger = Serilog.ILogger;
     using Serilog;
-    using Microsoft.Azure.IIoT.Diagnostics;
 
     /// <summary>
     /// Webservice startup
@@ -51,7 +52,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
         /// <summary>
         /// Current hosting environment - Initialized in constructor
         /// </summary>
-        public IHostingEnvironment Environment { get; }
+        public IWebHostEnvironment Environment { get; }
 
         /// <summary>
         /// Di container - Initialized in ConfigureServices
@@ -63,7 +64,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
         /// </summary>
         /// <param name="env"></param>
         /// <param name="configuration"></param>
-        public Startup(IHostingEnvironment env, IConfiguration configuration) {
+        public Startup(IWebHostEnvironment env, IConfiguration configuration) {
             Environment = env;
             ServiceInfo = new ServiceInfo();
             Config = new Config(
@@ -98,9 +99,10 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
             // services.AddHttpClient();
 
             // Add controllers as services so they'll be resolved.
-            services.AddMvc()
-                .AddApplicationPart(GetType().Assembly)
-                .AddControllersAsServices();
+            services.AddControllers()
+                .AddApplicationPart(GetType().Assembly);
+
+            services.AddHealthChecks();
 
             // Prepare DI container
             var builder = new ContainerBuilder();
@@ -116,9 +118,12 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
         /// </summary>
         /// <param name="app"></param>
         /// <param name="appLifetime"></param>
-        public void Configure(IApplicationBuilder app, IApplicationLifetime appLifetime) {
+        public void Configure(IApplicationBuilder app, IHostApplicationLifetime appLifetime) {
 
             var log = ApplicationContainer.Resolve<ILogger>();
+
+            app.UseRouting();
+            app.EnableCors();
 
             if (Config.AuthRequired) {
                 app.UseAuthentication();
@@ -128,8 +133,11 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Gateway {
                 app.UseHttpsRedirection();
             }
 
-            app.EnableCors();
-            app.UseMvc();
+            app.UseEndpoints(endpoints => {
+                endpoints.MapHealthChecks("/health");
+                endpoints.MapControllers();
+            });
+
             app.UseOpcUaTransport();
 
             // If you want to dispose of resources that have been resolved in the

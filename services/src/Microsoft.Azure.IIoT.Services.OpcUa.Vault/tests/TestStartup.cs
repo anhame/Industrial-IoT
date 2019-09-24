@@ -23,7 +23,7 @@ namespace Microsoft.Azure.IIoT.Services.OpcUa.Vault {
         /// </summary>
         /// <param name="env"></param>
         /// <param name="configuration"></param>
-        public TestStartup(IHostingEnvironment env, IConfiguration configuration) :
+        public TestStartup(IWebHostEnvironment env, IConfiguration configuration) :
             base(env, configuration) {
         }
 

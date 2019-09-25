@@ -18,10 +18,10 @@
     <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)/icon.png" Pack="true" PackagePath="\"/>
+    <None Include="$(MSBuildThisFileDirectory)/docs/media/icon.png" Pack="true" PackagePath="\"/>
   </ItemGroup>  
   <ItemGroup>
-    <None Remove="mcr.json" />
+    <None Remove="$(MSBuildProjectDirectory)/mcr.json" />
   </ItemGroup>
   <Import Project="version.props" />
   <PropertyGroup>

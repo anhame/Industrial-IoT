@@ -1,4 +1,4 @@
-// ------------------------------------------------------------
+﻿// ------------------------------------------------------------
 //  Copyright (c) Microsoft Corporation.  All rights reserved.
 //  Licensed under the MIT License (MIT). See License.txt in the repo root for license information.
 // ------------------------------------------------------------
@@ -12,22 +12,22 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
     using System.Threading.Tasks;
 
     /// <summary>
-    /// Implements node and publish services as adapter on top of api.
+    /// Implements node services as adapter on top of supervisor api.
     /// </summary>
-    public sealed class TwinAdapter : IBrowseServices<string>,
-        INodeServices<string>, IPublishServices<string> {
+    public sealed class TwinSupervisorAdapter : IBrowseServices<EndpointApiModel>,
+        INodeServices<EndpointApiModel> {
 
         /// <summary>
         /// Create adapter
         /// </summary>
         /// <param name="client"></param>
-        public TwinAdapter(ITwinServiceApi client) {
+        public TwinSupervisorAdapter(ITwinModuleApi client) {
             _client = client ?? throw new ArgumentNullException(nameof(client));
         }
 
         /// <inheritdoc/>
         public async Task<BrowseResultModel> NodeBrowseFirstAsync(
-            string endpoint, BrowseRequestModel request) {
+            EndpointApiModel endpoint, BrowseRequestModel request) {
             var result = await _client.NodeBrowseFirstAsync(endpoint,
                 Map<BrowseRequestApiModel>(request));
             return Map<BrowseResultModel>(result);
@@ -35,7 +35,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<BrowseNextResultModel> NodeBrowseNextAsync(
-            string endpoint, BrowseNextRequestModel request) {
+            EndpointApiModel endpoint, BrowseNextRequestModel request) {
             var result = await _client.NodeBrowseNextAsync(endpoint,
                 Map<BrowseNextRequestApiModel>(request));
             return Map<BrowseNextResultModel>(result);
@@ -43,7 +43,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<BrowsePathResultModel> NodeBrowsePathAsync(
-            string endpoint, BrowsePathRequestModel request) {
+            EndpointApiModel endpoint, BrowsePathRequestModel request) {
             var result = await _client.NodeBrowsePathAsync(endpoint,
                 Map<BrowsePathRequestApiModel>(request));
             return Map<BrowsePathResultModel>(result);
@@ -51,7 +51,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<ValueReadResultModel> NodeValueReadAsync(
-            string endpoint, ValueReadRequestModel request) {
+            EndpointApiModel endpoint, ValueReadRequestModel request) {
             var result = await _client.NodeValueReadAsync(endpoint,
                 Map<ValueReadRequestApiModel>(request));
             return Map<ValueReadResultModel>(result);
@@ -59,7 +59,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<ValueWriteResultModel> NodeValueWriteAsync(
-            string endpoint, ValueWriteRequestModel request) {
+            EndpointApiModel endpoint, ValueWriteRequestModel request) {
             var result = await _client.NodeValueWriteAsync(endpoint,
                 Map<ValueWriteRequestApiModel>(request));
             return Map<ValueWriteResultModel>(result);
@@ -67,7 +67,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<MethodMetadataResultModel> NodeMethodGetMetadataAsync(
-            string endpoint, MethodMetadataRequestModel request) {
+            EndpointApiModel endpoint, MethodMetadataRequestModel request) {
             var result = await _client.NodeMethodGetMetadataAsync(endpoint,
                 Map<MethodMetadataRequestApiModel>(request));
             return Map<MethodMetadataResultModel>(result);
@@ -75,7 +75,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<MethodCallResultModel> NodeMethodCallAsync(
-            string endpoint, MethodCallRequestModel request) {
+            EndpointApiModel endpoint, MethodCallRequestModel request) {
             var result = await _client.NodeMethodCallAsync(endpoint,
                 Map<MethodCallRequestApiModel>(request));
             return Map<MethodCallResultModel>(result);
@@ -83,7 +83,7 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<ReadResultModel> NodeReadAsync(
-            string endpoint, ReadRequestModel request) {
+            EndpointApiModel endpoint, ReadRequestModel request) {
             var result = await _client.NodeReadAsync(endpoint,
                 Map<ReadRequestApiModel>(request));
             return Map<ReadResultModel>(result);
@@ -91,34 +91,10 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
 
         /// <inheritdoc/>
         public async Task<WriteResultModel> NodeWriteAsync(
-            string endpoint, WriteRequestModel request) {
+            EndpointApiModel endpoint, WriteRequestModel request) {
             var result = await _client.NodeWriteAsync(endpoint,
                 Map<WriteRequestApiModel>(request));
             return Map<WriteResultModel>(result);
-        }
-
-        /// <inheritdoc/>
-        public async Task<PublishStartResultModel> NodePublishStartAsync(
-            string endpoint, PublishStartRequestModel request) {
-            var result = await _client.NodePublishStartAsync(endpoint,
-                Map<PublishStartRequestApiModel>(request));
-            return Map<PublishStartResultModel>(result);
-        }
-
-        /// <inheritdoc/>
-        public async Task<PublishStopResultModel> NodePublishStopAsync(
-            string endpoint, PublishStopRequestModel request) {
-            var result = await _client.NodePublishStopAsync(endpoint,
-                Map<PublishStopRequestApiModel>(request));
-            return Map<PublishStopResultModel>(result);
-        }
-
-        /// <inheritdoc/>
-        public async Task<PublishedItemListResultModel> NodePublishListAsync(
-            string endpoint, PublishedItemListRequestModel request) {
-            var result = await _client.NodePublishListAsync(endpoint,
-                Map<PublishedItemListRequestApiModel>(request));
-            return Map<PublishedItemListResultModel>(result);
         }
 
         /// <summary>
@@ -132,6 +108,6 @@ namespace Microsoft.Azure.IIoT.OpcUa.Api.Twin {
                 JsonConvertEx.SerializeObject(model));
         }
 
-        private readonly ITwinServiceApi _client;
+        private readonly ITwinModuleApi _client;
     }
 }

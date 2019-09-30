@@ -48,6 +48,10 @@ namespace IAI {
     using Microsoft.Azure.KeyVault.Models;
     using Microsoft.Azure.Services.AppAuthentication;
     using System.Text;
+    using Microsoft.Azure.Management.Network.Fluent;
+    using Microsoft.Azure.Management.Network.Fluent.Models;
+    using System.Security.Cryptography.X509Certificates;
+    using System.IO;
 
     class Program {
 
@@ -196,17 +200,18 @@ namespace IAI {
 
             var servicesApplicationName = applicationName + "-services";
             var clientsApplicationName = applicationName + "-clients";
+            var aksApplicationName = applicationName + "-aks";
 
             // KeyVault names
             var keyVaultName = SdkContext.RandomResourceName("keyvault-", 5);
 
             const string webAppCN = "webapp.services.net";
             const string webAppCertName = "webApp";
-            CertificateBundle webAppCert;
+            CertificateBundle webAppCertificateBundle;
 
             const string aksClusterCN = "aks.cluster.net";
             const string aksClusterCertName = "aksCluster";
-            CertificateBundle aksClusterCert;
+            CertificateBundle aksClusterCertificateBundle;
 
             // Storage Account names
             var storageAccountName = SdkContext.RandomResourceName("storage", 12);
@@ -240,8 +245,16 @@ namespace IAI {
             var appServicePlanName = SdkContext.RandomResourceName(applicationName + "-", 5);
             var azureWebsiteName = applicationName;
 
+            // Networking names
+            var iotServicesName = "iiotservices";
+            var virtualNetworkName = iotServicesName + "-vnet";
+            var networkSecurityGroupName = iotServicesName + "-nsg";
+            var networkInterfaceName = iotServicesName + "-nic";
+            var publicIPAddressName = iotServicesName + "-public-ip";
+            var domainNameLabel = SdkContext.RandomResourceName(applicationName + "-", 5);
+
             // AKS cluster name
-            var aksClusterName = SdkContext.RandomResourceName("aksCluster", 5);
+            var aksClusterName = SdkContext.RandomResourceName("aksCluster-", 5);
             var aksDnsPrefix = aksClusterName + "-dns";
 
 
@@ -388,7 +401,7 @@ namespace IAI {
 
             // !!!!! Oauth2AllowImplicitFlow !!!!!
             var serviceApplicationWebApplication = new WebApplication {
-                HomePageUrl = "https://localhost",  // This is SignInUrl
+                HomePageUrl = "https://localhost",  // ToDo: This is SignInUrl. Change to something meaningfull.
                 //Oauth2AllowImplicitFlow = false,
                 ImplicitGrantSettings = new ImplicitGrantSettings {
                     EnableIdTokenIssuance = true
@@ -401,8 +414,8 @@ namespace IAI {
                     EndDateTime = DateTimeOffset.UtcNow.AddYears(2),
                     CustomKeyIdentifier = ToBase64Bytes("Service Key"),
                     DisplayName = "Service Key",
-                    KeyId = Guid.NewGuid(),
-                    SecretText = "not so secret right now"  // !!!!! ToDO !!!!!
+                    //KeyId = Guid.NewGuid(),
+                    SecretText = GeneratePassword()
                 }
             };
 
@@ -577,8 +590,8 @@ namespace IAI {
                     EndDateTime = DateTimeOffset.UtcNow.AddYears(2),
                     CustomKeyIdentifier = ToBase64Bytes("Client Key"),
                     DisplayName = "Client Key",
-                    KeyId = Guid.NewGuid(),
-                    SecretText = "not so secret right now"  // !!!!! ToDO !!!!!
+                    //KeyId = Guid.NewGuid(),
+                    SecretText = GeneratePassword()
                 }
             };
 
@@ -699,6 +712,127 @@ namespace IAI {
                 .Request()
                 .AddAsync(clientApplicationOAuth2PermissionGrantUserReadRequest)
                 .Result;
+
+
+
+
+            // App Registration for AKS ////////////////////////////////////////
+            // Register aks application
+
+            // Add OAuth2Permissions for user impersonation
+            var aksOauth2Permissions = new List<PermissionScope> {
+                new PermissionScope {
+                    AdminConsentDescription = string.Format("Allow the app to access {0} on behalf of the signed-in user.", aksApplicationName),
+                    AdminConsentDisplayName = string.Format("Access {0}", aksApplicationName),
+                    Id = Guid.NewGuid(),
+                    IsEnabled = true,
+                    Type = "User",
+                    UserConsentDescription = string.Format("Allow the application to access {0} on your behalf.", aksApplicationName),
+                    UserConsentDisplayName = string.Format("Access {0}", aksApplicationName),
+                    Value = "user_impersonation"
+                }
+            };
+
+            var aksApplicationApiApplication = new ApiApplication {
+                Oauth2PermissionScopes = aksOauth2Permissions
+            };
+
+            // !!!!! Oauth2AllowImplicitFlow !!!!!
+            var aksApplicationWebApplication = new WebApplication {
+                HomePageUrl = $"https://{aksApplicationName}",  // ToDo: This is SignInUrl. Change to something meaningfull.
+                //Oauth2AllowImplicitFlow = false,
+                ImplicitGrantSettings = new ImplicitGrantSettings {
+                    EnableIdTokenIssuance = true
+                }
+            };
+
+            var aksApplicationPasswordCredentialRbacSecret = GeneratePassword();
+
+            var aksApplicationPasswordCredentials = new List<PasswordCredential> {
+                new PasswordCredential {
+                    StartDateTime = DateTimeOffset.UtcNow,
+                    EndDateTime = DateTimeOffset.UtcNow.AddYears(2),
+                    CustomKeyIdentifier = ToBase64Bytes("rbac"),
+                    DisplayName = "rbac",
+                    //KeyId = Guid.NewGuid(),
+                    SecretText = aksApplicationPasswordCredentialRbacSecret
+                }
+            };
+
+            var aksApplicationIdentifierUri = $"https://{tenantId}/{aksApplicationName}";
+
+            var aksApplicationDefinition = new Application {
+                DisplayName = aksApplicationName,
+                IsFallbackPublicClient = false,
+                IdentifierUris = new List<string> { aksApplicationIdentifierUri },
+                Tags = defaultTagsList,
+                SignInAudience = "AzureADMyOrg",
+                AppRoles = new List<AppRole>(),
+                RequiredResourceAccess = new List<RequiredResourceAccess>(),
+                Api = aksApplicationApiApplication,
+                Web = aksApplicationWebApplication,
+                PasswordCredentials = aksApplicationPasswordCredentials
+            };
+
+            var aksApplication = graphServiceClient
+                .Applications
+                .Request()
+                .AddAsync(aksApplicationDefinition)
+                .Result;
+
+            // Find service principal for aks application
+            var aksAppIdFilterClause = string.Format("AppId eq '{0}'", aksApplication.AppId);
+
+            var aksApplicationServicePrincipals = graphServiceClient
+                .ServicePrincipals
+                .Request()
+                .Filter(aksAppIdFilterClause)
+                .GetAsync()
+                .Result;
+
+
+            ServicePrincipal aksApplicationServicePrincipal;
+
+            if (aksApplicationServicePrincipals.Count == 0) {
+                // Define new service principal
+                var aksApplicationServicePrincipalDefinition = new ServicePrincipal {
+                    DisplayName = aksApplicationName,
+                    AppId = aksApplication.AppId,
+                    Tags = defaultTagsList // Add WindowsAzureActiveDirectoryIntegratedApp
+                };
+
+                // Create new service principal
+                aksApplicationServicePrincipal = graphServiceClient
+                    .ServicePrincipals
+                    .Request()
+                    .AddAsync(aksApplicationServicePrincipalDefinition)
+                    .Result;
+            }
+            else {
+                aksApplicationServicePrincipal = aksApplicationServicePrincipals.First();
+            }
+
+            // Try to add current user as app owner for aks application, if it is not owner already
+            var aksIdFilterClause = string.Format("Id eq '{0}'", me.Id);
+
+            var aksApplicationOwners = graphServiceClient
+                .Applications[aksApplication.Id]
+                .Owners
+                .Request()
+                .Filter(aksIdFilterClause)
+                .GetAsync()
+                .Result;
+
+            if (aksApplicationOwners.Count == 0) {
+                graphServiceClient
+                    .Applications[aksApplication.Id]
+                    .Owners
+                    .References
+                    .Request()
+                    .AddAsync(me)
+                    .Wait();
+            }
+
 
 
 
@@ -828,7 +962,7 @@ namespace IAI {
                         .Result;
                 }
 
-                webAppCert = keyVaultClient
+                webAppCertificateBundle = keyVaultClient
                     .GetCertificateAsync(
                         keyVault.Properties.VaultUri,
                         webAppCertName
@@ -858,7 +992,7 @@ namespace IAI {
                         .Result;
                 }
 
-                aksClusterCert = keyVaultClient
+                aksClusterCertificateBundle = keyVaultClient
                     .GetCertificateAsync(
                         keyVault.Properties.VaultUri,
                         aksClusterCertName
@@ -1318,8 +1452,11 @@ namespace IAI {
                     ).Result;
             }
 
+
+
             // Create AppService Plan to host the Application Gateway Web App
-            var appServiceManager = new AppServiceManager(restClient, subscription.SubscriptionId, tenantId);
+
+            //var appServiceManager = new AppServiceManager(restClient, subscription.SubscriptionId, tenantId);
 
             //var appServicePlanFluent = appServiceManager
             //    .AppServicePlans
@@ -1419,6 +1556,270 @@ namespace IAI {
                         siteSourceControlRequest
                     ).Result;
             }
+
+
+
+            // Create Virtual Network
+            VirtualNetworkInner virtualNetwork;
+            NetworkSecurityGroupInner networkSecurityGroup;
+            PublicIPAddressInner publicIPAddress;
+            NetworkInterfaceInner networkInterface;
+
+            using (var networkManagementClient = new NetworkManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                // Define Virtual Network
+                var virtualNetworkDefinition = new VirtualNetworkInner {
+                    Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
+                    AddressSpace = new AddressSpace {
+                        AddressPrefixes = new List<string>() { "10.0.0.0/16" }
+                    },
+                    Subnets = new List<SubnetInner> {
+                        new SubnetInner () {
+                            Name = "default",
+                            AddressPrefix = "10.0.0.0/24"
+                        }//,
+                        //new SubnetInner () {
+                        //    Name = "aks",
+                        //    AddressPrefix = "10.0.1.0/24"
+                        //}
+                    }
+
+                };
+
+                virtualNetworkDefinition.Validate();
+
+                virtualNetwork = networkManagementClient
+                    .VirtualNetworks
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        virtualNetworkName,
+                        virtualNetworkDefinition
+                    )
+                    .Result;
+
+                // Define Network Security Group
+                var networkSecurityGroupDefinition = new NetworkSecurityGroupInner {
+                    Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
+                    SecurityRules = new List<SecurityRuleInner> {
+                        new SecurityRuleInner {
+                            Name = "UASC",
+
+                            Protocol = SecurityRuleProtocol.Tcp,
+                            SourcePortRange = "*",
+                            DestinationPortRange = "4840",
+                            SourceAddressPrefix = "*",
+                            DestinationAddressPrefix = "*",
+                            Access = SecurityRuleAccess.Allow,
+                            Priority = 100,
+                            Direction = SecurityRuleDirection.Inbound
+                        },
+                        new SecurityRuleInner {
+                            Name = "HTTPS",
+
+                            Protocol = SecurityRuleProtocol.Tcp,
+                            SourcePortRange = "*",
+                            DestinationPortRange = "443",
+                            SourceAddressPrefix = "*",
+                            DestinationAddressPrefix = "*",
+                            Access = SecurityRuleAccess.Allow,
+                            Priority = 101,
+                            Direction = SecurityRuleDirection.Inbound
+
+                        },
+                        new SecurityRuleInner {
+                            Name = "SSH",
+
+                            Protocol = SecurityRuleProtocol.Tcp,
+                            SourcePortRange = "*",
+                            DestinationPortRange = "22",
+                            SourceAddressPrefix = "*",
+                            DestinationAddressPrefix = "*",
+                            Access = SecurityRuleAccess.Deny,
+                            Priority = 102,
+                            Direction = SecurityRuleDirection.Inbound
+                        }
+                    }
+                };
+
+                networkSecurityGroupDefinition.Validate();
+
+                networkSecurityGroup = networkManagementClient
+                    .NetworkSecurityGroups
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        networkSecurityGroupName,
+                        networkSecurityGroupDefinition
+                    )
+                    .Result;
+
+                // Define Public IP
+                var publicIPAddressDefinition = new PublicIPAddressInner {
+                    Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
+                    PublicIPAllocationMethod = IPAllocationMethod.Dynamic,
+                    DnsSettings = new PublicIPAddressDnsSettings {
+                        DomainNameLabel = domainNameLabel  // ToDo: We do not have any VMs any more.
+                    },
+                    IdleTimeoutInMinutes = 4
+                };
+
+                publicIPAddressDefinition.Validate();
+
+                publicIPAddress = networkManagementClient
+                    .PublicIPAddresses
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        publicIPAddressName,
+                        publicIPAddressDefinition
+                    )
+                    .Result;
+
+                // Define Network Interface
+                var networkInterfaceDefinition = new NetworkInterfaceInner {
+                    Location = resourceGroup.RegionName,
+                    Tags = defaultTagsDict,
+
+                    IpConfigurations = new List<NetworkInterfaceIPConfigurationInner> {
+                        new NetworkInterfaceIPConfigurationInner {
+                            Name = "ipconfig1",
+                            PrivateIPAddress = "10.0.0.4",
+                            PrivateIPAllocationMethod = IPAllocationMethod.Dynamic,
+                            PublicIPAddress = new SubResource {
+                                Id = publicIPAddress.Id
+                            },
+                            Subnet = new SubResource {
+                                Id = virtualNetwork.Subnets.Where(subnet => subnet.Name == "default").FirstOrDefault().Id  // ToDo: Do we need to have a separate one for AKS ?
+                            }
+                        }
+                    },
+                    NetworkSecurityGroup = new SubResource {
+                        Id = networkSecurityGroup.Id
+                    }
+                };
+
+                networkInterfaceDefinition.Validate();
+
+                networkInterface = networkManagementClient
+                    .NetworkInterfaces
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        networkInterfaceName,
+                        networkInterfaceDefinition
+                    )
+                    .Result;
+            }
+
+
+
+
+
+            // Create AKS cluster
+            var aksClusterX509Certificate = new X509Certificate2(aksClusterCertificateBundle.Cer);
+            var openSshPublicKey = X509CertificateHelper.GetOpenSSHPublicKey(aksClusterX509Certificate);
+
+            using (
+                var containerServiceManagementClient = new ContainerServiceManagementClient(restClient) {
+                SubscriptionId = subscription.SubscriptionId
+            }) {
+                // Define AKS cluster
+                var managedClusterDefinition = new ManagedClusterInner (null, null, aksClusterName){
+                    Location = resourceGroup.RegionName,
+                    Tags = null,
+
+                    //ProvisioningState = null,
+                    KubernetesVersion = "1.13.10",
+                    DnsPrefix = aksDnsPrefix,
+                    //Fqdn = null,
+                    AgentPoolProfiles = new List<ManagedClusterAgentPoolProfile> {
+                        new ManagedClusterAgentPoolProfile {
+                            Name = "agentpool",
+                            Count = 1,
+                            VmSize = "Standard_DS2_v2",
+                            OsDiskSizeGB = 100,
+                            OsType = "Linux",
+
+                        }
+                    },
+                    LinuxProfile = new ContainerServiceLinuxProfile {
+                        AdminUsername = "azureuser",
+                        Ssh = new ContainerServiceSshConfiguration {
+                            PublicKeys = new List<ContainerServiceSshPublicKey> {
+                                new ContainerServiceSshPublicKey {
+                                    KeyData = openSshPublicKey
+                                }
+                            }
+                        }
+                    },
+                    ServicePrincipalProfile = new ManagedClusterServicePrincipalProfile {
+                        ClientId = aksApplication.AppId,
+                        Secret = aksApplicationPasswordCredentialRbacSecret
+                    },
+                    AddonProfiles = new Dictionary<string, ManagedClusterAddonProfile> {
+                        { "omsagent", new ManagedClusterAddonProfile {
+                                Enabled = true,
+                                Config = new Dictionary<string, string> {
+                                    { "logAnalyticsWorkspaceResourceID", operationalInsightsWorkspace.Id }
+                                }
+                            }
+                        },
+                        { "httpApplicationRouting", new ManagedClusterAddonProfile {
+                                Enabled = false
+                            }
+                        }
+                    },
+                    //NodeResourceGroup = resourceGroup.Name,
+                    EnableRBAC = true,
+                    NetworkProfile = new ContainerServiceNetworkProfile {
+
+                    }
+                };
+
+                managedClusterDefinition.Validate();
+
+                var aksCluster = containerServiceManagementClient
+                    .ManagedClusters
+                    .CreateOrUpdateAsync(
+                        resourceGroup.Name,
+                        aksClusterName,
+                        managedClusterDefinition
+                    )
+                    .Result;
+            }
+
+
+            
+            
+            //// Fluent interfaces
+            //var containerServiceManager = new ContainerServiceManager(restClient, subscription.SubscriptionId);
+
+            //containerServiceManager
+            //    .KubernetesClusters
+            //    .Define(aksClusterName)
+            //    .WithRegion(resourceGroup.Region)
+            //    .WithExistingResourceGroup(resourceGroup)
+            //    .WithLatestVersion()
+            //    .WithRootUsername("azureuser")
+            //    .WithSshKey(openSshPublicKey)
+            //    .WithServicePrincipalClientId(aksApplication.AppId)
+            //    .WithServicePrincipalSecret(aksApplicationPasswordCredentialRbacSecret)
+            //        .DefineAgentPool("agentpool")
+            //        .WithVirtualMachineSize(ContainerServiceVirtualMachineSizeTypes.StandardDS2V2)
+            //        .WithAgentPoolVirtualMachineCount(1)
+            //        .WithOSType(ContainerServiceOSTypes.Linux)
+            //        .WithOSDiskSizeInGB(100)
+            //        .Attach()
+            //    .WithDnsPrefix(aksDnsPrefix)
+            //    .WithTags(defaultTagsDict)
+            //    .Create();
+
+
+
 
             //var tokenCredentials = new AzureAdTokenCredentials("microsoft.onmicrosoft.com", AzureEnvironments.AzureCloudEnvironment);
             //var tokenProvider = new AzureAdTokenProvider(tokenCredentials);
@@ -1816,18 +2217,10 @@ namespace IAI {
             return clientApplicationServicePrincipals.First();
         }
 
-        public static string GeneratePassword(int length) {
+        public static string GeneratePassword() {
             // ToDo: Make it cryptographically sound at some point.
-            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-            var random = new Random();
-            var password = new string(Enumerable
-                .Repeat(chars, length)
-                .Select(s => s[random.Next(s.Length)])
-                .ToArray()
-            );
-
-            return password;
+            return Guid.NewGuid().ToString();
         }
+
     }
 }
